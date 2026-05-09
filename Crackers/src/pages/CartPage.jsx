@@ -4,6 +4,9 @@ import { Trash2, Plus, Minus } from 'lucide-react';
 
 const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
   const [couponCode, setCouponCode] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
 
   const subtotal = cartItems.reduce((total, item) => total + (item.ourPrice * item.quantity), 0);
   // Simple discount logic: If coupon is 'DIWALI25', 10% off
@@ -14,7 +17,30 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
 
   const handleCheckout = () => {
     if (cartItems.length === 0) return alert("Your cart is empty!");
-    const url = generateWhatsAppLink(cartItems, subtotal, discount, gst, total, couponCode === 'DIWALI25' ? couponCode : '');
+
+    const trimmedPhone = customerPhone.trim();
+    const trimmedEmail = customerEmail.trim();
+    const trimmedAddress = customerAddress.trim();
+
+    if (!trimmedPhone || !trimmedEmail || !trimmedAddress) {
+      return alert('Please enter your phone number, email, and address before proceeding.');
+    }
+
+    const customerDetails = {
+      phone: trimmedPhone,
+      email: trimmedEmail,
+      address: trimmedAddress,
+    };
+
+    const url = generateWhatsAppLink(
+      cartItems,
+      subtotal,
+      discount,
+      gst,
+      total,
+      couponCode === 'DIWALI25' ? couponCode : '',
+      customerDetails
+    );
     window.open(url, '_blank');
   };
 
@@ -91,6 +117,32 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
                     value={couponCode}
                     onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                     style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--dark-surface)', color: 'var(--text-main)' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '1.5rem' }}>
+                <div className="flex" style={{ flexDirection: 'column', gap: '0.75rem' }}>
+                  <input
+                    type="tel"
+                    placeholder="Phone Number"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--dark-surface)', color: 'var(--text-main)' }}
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email Address"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--dark-surface)', color: 'var(--text-main)' }}
+                  />
+                  <textarea
+                    placeholder="Delivery Address"
+                    value={customerAddress}
+                    onChange={(e) => setCustomerAddress(e.target.value)}
+                    rows={3}
+                    style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--dark-surface)', color: 'var(--text-main)', resize: 'vertical' }}
                   />
                 </div>
               </div>

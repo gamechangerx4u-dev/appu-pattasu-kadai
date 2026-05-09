@@ -1,7 +1,20 @@
-export const generateWhatsAppLink = (cartItems, subtotal, discount, gst, totalAmount, couponCode = '') => {
+export const generateWhatsAppLink = (
+  cartItems,
+  subtotal,
+  discount,
+  gst,
+  totalAmount,
+  couponCode = '',
+  customerDetails = {}
+) => {
   const shopOwnerNumber = "9876543210"; // Placeholder random 10-digit number
+  const { phone = '', email = '', address = '' } = customerDetails;
   
   let message = `*New Order Enquiry* 🧨✨\n\n`;
+  message += `*Customer Details:*\n`;
+  message += `Phone: ${phone || 'Not provided'}\n`;
+  message += `Email: ${email || 'Not provided'}\n`;
+  message += `Address: ${address || 'Not provided'}\n\n`;
   message += `*Order Details:*\n`;
   
   cartItems.forEach((item, index) => {
