@@ -1,10 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Phone, Mail } from 'lucide-react';
-import data from '../data/db.json';
 import PriceFilter from './PriceFilter';
 
-const Sidebar = ({ isOpen, toggleSidebar, minPrice, maxPrice, setMinPrice, setMaxPrice }) => {
+const Sidebar = ({ isOpen, toggleSidebar, minPrice, maxPrice, setMinPrice, setMaxPrice, categories = [] }) => {
   const navigate = useNavigate();
   const slugify = (text) => text.toLowerCase().replace(/\s+/g, '-');
   return (
@@ -59,7 +58,7 @@ const Sidebar = ({ isOpen, toggleSidebar, minPrice, maxPrice, setMinPrice, setMa
               All Crackers
             </button>
           </li>
-          {data.categories.map(cat => (
+          {categories.map(cat => (
             <li key={cat}>
               <button
                 type="button"
