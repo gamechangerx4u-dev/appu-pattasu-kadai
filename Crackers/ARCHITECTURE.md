@@ -49,7 +49,7 @@ onClick={() => navigate(`/product-category/${slugify(category)}`)}
 
 ---
 
-## 🔧 Phase 2: Supabase Backend Integration — READY FOR SETUP
+## 🔧 Phase 2: Supabase Backend Integration — ARCHIVED (migrated to Mongo backend)
 
 ### Architecture Overview
 ```
@@ -94,11 +94,7 @@ CREATE TABLE products (
 ```
 
 ### 2.2: Environment Variables
-```bash
-# .env (add these from your Supabase dashboard)
-VITE_SUPABASE_URL=https://your-project-ref.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
+This project no longer uses Supabase in runtime. Supabase-related environment variables have been removed from the active `.env` and replaced by the Mongo/backend variables documented in `.env.example`.
 
 ### 2.3: Row-Level Security (RLS)
 - **Categories & Products**: Enable "read access for all users" (public)
@@ -133,7 +129,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 2. **Create Supabase project** at https://app.supabase.com
 3. **Run SQL queries** in Supabase Dashboard
 4. **Update `.env`** with credentials
-5. **Follow `PHASE2_SUPABASE_SETUP.md`** step-by-step
+5. **(Deprecated)** The detailed Supabase setup guide `PHASE2_SUPABASE_SETUP.md` has been archived and removed from the repo — this project now uses a MongoDB + Express backend instead.
 
 ---
 
@@ -194,8 +190,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 Crackers/
 ├── .env                          ← SECRETS (git-ignored)
-├── .env.example                  ← Template for setup
-├── PHASE2_SUPABASE_SETUP.md      ← Detailed setup guide
+├── .env.example                  ← Template for setup (Mongo/Backend vars)
 ├── package.json
 ├── src/
 │   ├── App.jsx                   ← Routes (includes /admin)
@@ -209,7 +204,7 @@ Crackers/
 │   │   ├── Sidebar.jsx           ← Uses navigate() for routing
 │   │   └── ...
 │   ├── lib/
-│   │   └── supabaseClient.js     ← Supabase initialization
+│   │   └── (legacy Supabase client removed)
 │   └── data/
 │       └── db.json               ← Fallback local data
 ```

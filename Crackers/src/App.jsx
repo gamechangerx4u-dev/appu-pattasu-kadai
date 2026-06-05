@@ -5,11 +5,13 @@ import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import Sidebar from './components/Sidebar';
 import Home from './pages/Home';
+import { loadCatalog } from './lib/catalog';
 
 // Lazy load pages for code splitting
 const CartPage = lazy(() => import('./pages/CartPage'));
 const WishlistPage = lazy(() => import('./pages/WishlistPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
+const PaymentPage = lazy(() => import('./pages/PaymentPage'));
 
 // Loading component
 const PageLoader = () => (
@@ -26,6 +28,9 @@ function App() {
   const [maxPrice, setMaxPrice] = useState(5000);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [cart, setCart] = useState(() => {
     const saved = localStorage.getItem('cart');
     return saved ? JSON.parse(saved) : [];
@@ -44,6 +49,31 @@ function App() {
     localStorage.setItem('wishlist', JSON.stringify(wishlist));
   }, [wishlist]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchCatalog = async () => {
+      try {
+        const catalog = await loadCatalog();
+        if (!isMounted) return;
+        setProducts(catalog.products);
+        setCategories(catalog.categories);
+      } catch (error) {
+        console.error('Failed to load catalog data:', error);
+      } finally {
+        if (isMounted) {
+          setCatalogLoading(false);
+        }
+      }
+    };
+
+    fetchCatalog();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const addToCart = useCallback((product) => {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
@@ -61,6 +91,10 @@ function App() {
 
   const removeFromCart = useCallback((productId) => {
     setCart(prev => prev.filter(item => item.id !== productId));
+  }, []);
+
+  const clearCart = useCallback(() => {
+    setCart([]);
   }, []);
 
   const toggleWishlist = useCallback((product) => {
@@ -98,6 +132,7 @@ function App() {
         maxPrice={maxPrice}
         setMinPrice={setMinPrice}
         setMaxPrice={setMaxPrice}
+        categories={categories}
       />
 
       <Routes>
@@ -112,6 +147,9 @@ function App() {
             setMaxPrice={setMaxPrice}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
+            products={products}
+            categories={categories}
+            loading={catalogLoading}
           />
         } />
         <Route path="/product-category/:categorySlug" element={
@@ -125,6 +163,9 @@ function App() {
             setMaxPrice={setMaxPrice}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
+            products={products}
+            categories={categories}
+            loading={catalogLoading}
           />
         } />
         <Route path="/cart" element={
@@ -134,6 +175,11 @@ function App() {
               updateQuantity={updateQuantity} 
               removeFromCart={removeFromCart} 
             />
+          </Suspense>
+        } />
+        <Route path="/payment" element={
+          <Suspense fallback={<PageLoader />}>
+            <PaymentPage clearCart={clearCart} />
           </Suspense>
         } />
         <Route path="/wishlist" element={

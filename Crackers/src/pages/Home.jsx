@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Hero from '../components/Hero';
 import CategoryList from '../components/CategoryList';
@@ -7,10 +7,21 @@ import PriceFilter from '../components/PriceFilter';
 import SearchBar from '../components/SearchBar';
 import { ChevronRight } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
-import data from '../data/db.json';
-import { supabase, hasSupabase } from '../lib/supabaseClient';
 
-const Home = ({ onAddToCart, onAddToWishlist, wishlist, minPrice, maxPrice, setMinPrice, setMaxPrice, searchQuery, setSearchQuery }) => {
+const Home = ({
+  onAddToCart,
+  onAddToWishlist,
+  wishlist,
+  minPrice,
+  maxPrice,
+  setMinPrice,
+  setMaxPrice,
+  searchQuery,
+  setSearchQuery,
+  products = [],
+  categories = [],
+  loading = false,
+}) => {
   const { categorySlug } = useParams();
   const navigate = useNavigate();
 
@@ -20,35 +31,13 @@ const Home = ({ onAddToCart, onAddToWishlist, wishlist, minPrice, maxPrice, setM
     return slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
 
-  const [products, setProducts] = useState(data.products || []);
-  const [categories, setCategories] = useState(data.categories || []);
-
-  useEffect(() => {
-    if (!hasSupabase) return;
-
-    let isMounted = true;
-    const fetchData = async () => {
-      try {
-        const { data: prodData, error: prodErr } = await supabase.from('products').select('*');
-        const { data: catData, error: catErr } = await supabase.from('categories').select('name');
-        if (prodErr) console.warn('Supabase products error', prodErr);
-        if (catErr) console.warn('Supabase categories error', catErr);
-        if (isMounted) {
-          if (prodData) setProducts(prodData);
-          if (catData) setCategories(catData.map(c => c.name || c));
-        }
-      } catch (e) {
-        console.error('Failed to fetch from Supabase', e);
-      }
-    };
-    fetchData();
-    return () => { isMounted = false; };
-  }, []);
-
   const activeCategory = unslugify(categorySlug);
 
   const filteredProducts = useMemo(() => {
-    let list = activeCategory === 'All' ? products : products.filter(p => (p.category || '').toLowerCase() === activeCategory.toLowerCase());
+    let list = activeCategory === 'All' ? products : products.filter(p => {
+      const cats = Array.isArray(p.categories) && p.categories.length > 0 ? p.categories : (p.category ? [p.category] : []);
+      return cats.some(c => c.toLowerCase() === activeCategory.toLowerCase());
+    });
     if (searchQuery.trim() !== '') {
       list = list.filter(p => (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()));
     }
@@ -109,6 +98,11 @@ const Home = ({ onAddToCart, onAddToWishlist, wishlist, minPrice, maxPrice, setM
             </div>
             
             <div className="product-grid">
+              {loading && products.length === 0 && (
+                <div style={{ padding: '2rem', gridColumn: '1 / -1', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  Loading products...
+                </div>
+              )}
               {filteredProducts.map(product => (
                 <ProductCard 
                   key={product.id} 
@@ -118,7 +112,7 @@ const Home = ({ onAddToCart, onAddToWishlist, wishlist, minPrice, maxPrice, setM
                   inWishlist={wishlist.some(item => item.id === product.id)}
                 />
               ))}
-              {filteredProducts.length === 0 && (
+              {!loading && filteredProducts.length === 0 && (
                 <div style={{ padding: '2rem', gridColumn: '1 / -1', textAlign: 'center', color: 'var(--text-muted)' }}>
                   No products found matching your criteria.
                 </div>

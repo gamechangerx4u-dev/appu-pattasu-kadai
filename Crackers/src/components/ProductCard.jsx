@@ -4,6 +4,13 @@ import ImagePlaceholder from './ImagePlaceholder';
 
 const ProductCard = React.memo(({ product, onAddToCart, onAddToWishlist, inWishlist }) => {
   const discountPercent = Math.round(((product.marketPrice - product.ourPrice) / product.marketPrice) * 100);
+  const isOutOfStock = product.stock <= 0;
+
+  const handleAddToCart = () => {
+    if (!isOutOfStock) {
+      onAddToCart(product);
+    }
+  };
 
   return (
     <div style={{ 
@@ -13,7 +20,8 @@ const ProductCard = React.memo(({ product, onAddToCart, onAddToWishlist, inWishl
       flexDirection: 'column',
       position: 'relative',
       padding: '1rem',
-      height: '100%'
+      height: '100%',
+      opacity: isOutOfStock ? 0.6 : 1
     }}>
       {/* Discount Tag */}
       <div style={{ 
@@ -24,6 +32,17 @@ const ProductCard = React.memo(({ product, onAddToCart, onAddToWishlist, inWishl
       }}>
         {discountPercent}%<br/>Off
       </div>
+
+      {/* Out of Stock Badge */}
+      {isOutOfStock && (
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          background: 'rgba(0, 0, 0, 0.7)', color: 'white', padding: '1rem',
+          borderRadius: '0.5rem', textAlign: 'center', zIndex: 2, fontWeight: 'bold'
+        }}>
+          Out of Stock
+        </div>
+      )}
 
       {/* Heart Icon */}
       <button 
@@ -66,10 +85,15 @@ const ProductCard = React.memo(({ product, onAddToCart, onAddToWishlist, inWishl
             ₹{product.ourPrice.toFixed(2)}
           </span>
         </div>
-        <div style={{ marginBottom: '1rem' }}>
+        <div style={{ marginBottom: '0.5rem' }}>
           <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
             MRP: ₹{product.marketPrice.toFixed(2)}
           </span>
+        </div>
+
+        {/* Stock Display */}
+        <div style={{ marginBottom: '1rem', fontSize: '0.9rem', fontWeight: '500', color: isOutOfStock ? 'var(--primary-red)' : '#4ADE80' }}>
+          {isOutOfStock ? 'Out of Stock' : `Stock: ${product.stock}`}
         </div>
 
         {/* Scale Icon */}
@@ -82,17 +106,18 @@ const ProductCard = React.memo(({ product, onAddToCart, onAddToWishlist, inWishl
         {/* Add to Cart Button */}
         <div style={{ marginTop: 'auto' }}>
           <button 
-            onClick={() => onAddToCart(product)}
+            onClick={handleAddToCart}
+            disabled={isOutOfStock}
             style={{ 
-              width: '100%', background: 'var(--primary-red)', color: 'white', 
+              width: '100%', background: isOutOfStock ? 'var(--text-muted)' : 'var(--primary-red)', color: 'white', 
               border: 'none', borderRadius: '24px', padding: '0.75rem', 
               display: 'flex', justifyContent: 'center', alignItems: 'center',
-              fontWeight: 'bold', fontSize: '0.9rem', cursor: 'pointer',
+              fontWeight: 'bold', fontSize: '0.9rem', cursor: isOutOfStock ? 'not-allowed' : 'pointer',
               position: 'relative'
             }}
           >
-            <span>Add to cart</span>
-            <Plus size={18} style={{ position: 'absolute', right: '12px' }} />
+            <span>{isOutOfStock ? 'Out of Stock' : 'Add to cart'}</span>
+            {!isOutOfStock && <Plus size={18} style={{ position: 'absolute', right: '12px' }} />}
           </button>
         </div>
       </div>

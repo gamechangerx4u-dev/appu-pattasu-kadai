@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { generateWhatsAppLink } from '../utils/whatsapp';
+import { useNavigate } from 'react-router-dom';
 import { Trash2, Plus, Minus } from 'lucide-react';
 
 const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
@@ -7,6 +8,7 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  const [customerName, setCustomerName] = useState('');
 
   const subtotal = cartItems.reduce((total, item) => total + (item.ourPrice * item.quantity), 0);
   // Simple discount logic: If coupon is 'DIWALI25', 10% off
@@ -18,30 +20,34 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
   const handleCheckout = () => {
     if (cartItems.length === 0) return alert("Your cart is empty!");
 
+    const trimmedName = customerName.trim();
     const trimmedPhone = customerPhone.trim();
     const trimmedEmail = customerEmail.trim();
     const trimmedAddress = customerAddress.trim();
 
-    if (!trimmedPhone || !trimmedEmail || !trimmedAddress) {
-      return alert('Please enter your phone number, email, and address before proceeding.');
+    if (!trimmedName || !trimmedPhone || !trimmedEmail || !trimmedAddress) {
+      return alert('Please enter your name, phone number, email, and address before proceeding.');
     }
 
-    const customerDetails = {
-      phone: trimmedPhone,
-      email: trimmedEmail,
-      address: trimmedAddress,
-    };
+    if (subtotal < 3000) {
+      return alert('Minimum subtotal of ₹3,000 is required to proceed.');
+    }
 
-    const url = generateWhatsAppLink(
-      cartItems,
+    // Save checkout details to session and navigate to payment page
+    const checkout = {
+      items: cartItems,
       subtotal,
       discount,
       gst,
       total,
-      couponCode === 'DIWALI25' ? couponCode : '',
-      customerDetails
-    );
-    window.open(url, '_blank');
+      coupon: couponCode === 'DIWALI25' ? couponCode : '',
+      customer_name: trimmedName,
+      email: trimmedEmail,
+      address: trimmedAddress,
+      user_id: null
+    };
+    sessionStorage.setItem('checkout', JSON.stringify(checkout));
+    window.location.href = '/payment';
   };
 
   return (
@@ -131,6 +137,13 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
                     style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--dark-surface)', color: 'var(--text-main)' }}
                   />
                   <input
+                    type="text"
+                    placeholder="Full Name"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--dark-surface)', color: 'var(--text-main)' }}
+                  />
+                  <input
                     type="email"
                     placeholder="Email Address"
                     value={customerEmail}
@@ -148,7 +161,7 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
               </div>
               
               <button className="btn btn-primary animate-pulse" style={{ width: '100%' }} onClick={handleCheckout}>
-                Proceed to WhatsApp
+                Proceed to Payment
               </button>
             </div>
           </div>
