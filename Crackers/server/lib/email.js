@@ -1,11 +1,43 @@
 import nodemailer from 'nodemailer';
 
+let cachedTransporter = null;
+
 const getSmtpConfig = () => ({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: Number(process.env.SMTP_PORT || 587),
-  user: process.env.SMTP_USER,
-  pass: process.env.SMTP_PASS,
+  user: (process.env.SMTP_USER || '').trim(),
+  pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''),
 });
+
+export async function verifyEmailTransport() {
+  const { user, pass } = getSmtpConfig();
+  if (!user || !pass) return false;
+
+  try {
+    const transporter = getTransporter();
+    await transporter.verify();
+    console.log(`SMTP ready for ${user}`);
+    return true;
+  } catch (error) {
+    console.error('SMTP verification failed:', error.message);
+    return false;
+  }
+}
+
+function getTransporter() {
+  if (cachedTransporter) return cachedTransporter;
+
+  const { host, port, user, pass } = getSmtpConfig();
+  cachedTransporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+    tls: { minVersion: 'TLSv1.2' },
+  });
+
+  return cachedTransporter;
+}
 
 const buildItemsHtml = (order) => (order.items || []).map((item) => {
   const qty = Number(item.quantity || 1);
@@ -70,9 +102,10 @@ async function sendMail(transporter, { to, subject, html }) {
   });
 }
 
-export async function sendOrderEmail(order) {
-  const { host: smtpHost, port: smtpPort, user: smtpUser, pass: smtpPass } = getSmtpConfig();
-  const storeEmail = process.env.STORE_EMAIL || 'appucrackers@gmail.com';
+export async function sendOrderEmail(order, options = {}) {
+  const { includePdf = false, resend = false } = options;
+  const { user: smtpUser, pass: smtpPass } = getSmtpConfig();
+  const storeEmail = (process.env.STORE_EMAIL || 'appucrackers@gmail.com').trim();
   const customerEmail = (order.email || '').trim();
 
   const itemsHtml = buildItemsHtml(order);
@@ -134,6 +167,11 @@ export async function sendOrderEmail(order) {
         <p><strong>Delivery address:</strong><br>${order.address || 'Not provided'}</p>
         <p><strong>Phone:</strong> ${order.phone || 'Not provided'}</p>
         ${buildOrderSummaryHtml(order, itemsHtml)}
+        ${order.pdf_url ? `
+        <div style="text-align: center; margin-top: 25px;">
+          <a href="${order.pdf_url}" style="background: #e63946; color: #fff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Download Invoice PDF</a>
+        </div>
+        ` : ''}
         <p style="margin-bottom: 0;">If you have any questions, reply to this email or contact us at ${storeEmail}.</p>
       </div>
       <div style="background: #f1f1f1; text-align: center; padding: 15px; font-size: 12px; color: #777;">
@@ -148,36 +186,44 @@ export async function sendOrderEmail(order) {
     console.warn(`Customer confirmation to: ${customerEmail || '(no customer email provided)'}`);
     console.warn(`Subject: New Order - ${order.site_txn}`);
     console.warn('------------------------------------------------------------------');
-    return;
+    return false;
   }
 
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpPort === 465,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass,
-    },
-  });
+  const transporter = getTransporter();
 
   try {
-    await sendMail(transporter, {
-      to: storeEmail,
-      subject: `[Appu Crackers] New Order Placed - ${order.site_txn}`,
-      html: adminEmailHtml,
-    });
-    console.log(`Store notification sent to ${storeEmail} for order ${order.site_txn}`);
+    if (!resend) {
+      await sendMail(transporter, {
+        to: storeEmail,
+        subject: `[Appu Crackers] New Order Placed - ${order.site_txn}`,
+        html: adminEmailHtml,
+      });
+      console.log(`Store notification sent to ${storeEmail} for order ${order.site_txn}`);
+    } else if (order.pdf_url) {
+      await sendMail(transporter, {
+        to: storeEmail,
+        subject: `[Appu Crackers] Invoice Ready - ${order.site_txn}`,
+        html: adminEmailHtml,
+      });
+      console.log(`Store invoice notification sent to ${storeEmail} for order ${order.site_txn}`);
+    }
 
     if (customerEmail) {
+      const customerSubject = includePdf && order.pdf_url
+        ? `[Appu Crackers] Your Invoice - ${order.site_txn}`
+        : `[Appu Crackers] Your Order Confirmation - ${order.site_txn}`;
+
       await sendMail(transporter, {
         to: customerEmail,
-        subject: `[Appu Crackers] Your Order Confirmation - ${order.site_txn}`,
+        subject: customerSubject,
         html: customerEmailHtml,
       });
       console.log(`Customer confirmation sent to ${customerEmail} for order ${order.site_txn}`);
     }
+
+    return true;
   } catch (error) {
     console.error('Failed to send order email:', error);
+    return false;
   }
 }

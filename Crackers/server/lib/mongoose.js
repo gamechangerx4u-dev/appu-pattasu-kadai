@@ -11,7 +11,7 @@ export async function connectMongoose() {
 
   try {
     await mongoose.connect(MONGODB_URI, {
-      // Mongoose 6+ doesn't need many options; keep defaults
+      serverSelectionTimeoutMS: 10000,
     });
     console.log('Mongoose connected');
     return mongoose;

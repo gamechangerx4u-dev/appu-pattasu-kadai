@@ -1,9 +1,9 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import { Order } from '../models/Order.js';
-import { Product } from '../models/Product.js';
 import { requireAdminAuth } from '../lib/adminAuth.js';
 import { sendOrderEmail } from '../lib/email.js';
+import { decrementProductStock } from '../lib/productLookup.js';
 
 const router = express.Router();
 
@@ -12,42 +12,61 @@ const serializeOrder = (order) => ({
   id: order.id || String(order._id),
 });
 
-router.post('/', async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+const normalizeOrderItems = (items = []) => {
+  if (!Array.isArray(items) || !items.length) {
+    throw new Error('Order must include at least one item.');
+  }
 
-  try {
-    const items = Array.isArray(req.body.items) ? req.body.items : [];
-
-    // Verify stock and update in a loop (inside the transaction session)
-    for (const item of items) {
-      const productId = item.id;
-      const quantity = Number(item.quantity || 1);
-      if (!productId) continue;
-
-      // Fetch product within transaction session
-      const product = await Product.findOne({ id: String(productId) }).session(session);
-      if (!product) {
-        throw new Error(`Product with ID "${productId}" not found.`);
-      }
-
-      if (product.stock < quantity) {
-        throw new Error(`Insufficient stock for product "${product.name}". Available: ${product.stock}, Requested: ${quantity}.`);
-      }
-
-      // Decrement stock
-      product.stock -= quantity;
-      await product.save({ session });
+  return items.map((item, index) => {
+    const productId = item?.id ?? item?._id ?? item?.productId;
+    if (!productId) {
+      throw new Error(`Order item at index ${index} is missing a product id.`);
     }
 
-    // Create the order inside the session
-    const order = await Order.create([{
+    return {
+      ...item,
+      id: String(productId),
+      quantity: Number(item.quantity || 1),
+    };
+  });
+};
+
+const createOrderWithStockUpdate = async (orderPayload) => {
+  const session = await mongoose.startSession();
+
+  try {
+    let createdOrder;
+
+    await session.withTransaction(async () => {
+      const items = normalizeOrderItems(orderPayload.items);
+
+      for (const item of items) {
+        await decrementProductStock(item.id, item.quantity, session);
+      }
+
+      const [order] = await Order.create([{
+        ...orderPayload,
+        items,
+      }], { session });
+
+      createdOrder = order.toObject();
+    });
+
+    return createdOrder;
+  } finally {
+    await session.endSession();
+  }
+};
+
+router.post('/', async (req, res) => {
+  try {
+    const orderPayload = {
       user_id: req.body.user_id || null,
       customer_name: req.body.customer_name || '',
       phone: req.body.phone || '',
       email: req.body.email || '',
       address: req.body.address || '',
-      items,
+      items: req.body.items,
       subtotal: Number(req.body.subtotal || 0),
       gst: Number(req.body.gst || 0),
       discount: Number(req.body.discount || 0),
@@ -59,20 +78,14 @@ router.post('/', async (req, res) => {
       pdf_path: req.body.pdf_path || '',
       status: req.body.status || 'pending',
       site_txn: req.body.site_txn,
-    }], { session });
+    };
 
-    await session.commitTransaction();
-    session.endSession();
+    const createdOrder = await createOrderWithStockUpdate(orderPayload);
 
-    const createdOrder = order[0].toObject();
-
-    // Send order email asynchronously in the background
-    void sendOrderEmail(createdOrder);
+    void sendOrderEmail(createdOrder, { includePdf: Boolean(createdOrder.pdf_url) });
 
     res.status(201).json(serializeOrder(createdOrder));
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     console.error('Error creating order within transaction:', error);
     res.status(400).json({ error: error.message });
   }
@@ -103,13 +116,20 @@ router.patch('/:id/status', requireAdminAuth, async (req, res) => {
   }
 });
 
-// Public: attach pdf_url/pdf_path to an existing order (used after client uploads PDF)
 router.patch('/:id/pdf', async (req, res) => {
   try {
     const { pdf_url, pdf_path } = req.body;
-    const order = await Order.findByIdAndUpdate(req.params.id, { pdf_url: pdf_url || '', pdf_path: pdf_path || '' }, { new: true }).lean();
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { pdf_url: pdf_url || '', pdf_path: pdf_path || '' },
+      { new: true }
+    ).lean();
+
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    res.json(order);
+
+    void sendOrderEmail(order, { includePdf: true, resend: true });
+
+    res.json(serializeOrder(order));
   } catch (error) {
     console.error('Error attaching pdf to order:', error);
     res.status(400).json({ error: error.message });
