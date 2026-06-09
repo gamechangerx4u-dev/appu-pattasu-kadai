@@ -1,8 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { generateInvoicePdf } from '../lib/pdfGenerator';
-import { createOrder, uploadFile } from '../lib/orders';
+import { uploadFile } from '../lib/orders';
 import { compressImage } from '../utils/imageCompressor';
+
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = String(reader.result || '');
+    resolve(result.includes(',') ? result.split(',')[1] : result);
+  };
+  reader.onerror = reject;
+  reader.readAsDataURL(blob);
+});
 
 const PaymentPage = ({ clearCart }) => {
   const navigate = useNavigate();
@@ -111,71 +121,83 @@ const PaymentPage = ({ clearCart }) => {
         }
       }
 
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const dataUrl = reader.result;
-        const pdfBlob = await generateInvoicePdf({
-          site_txn: order.site_txn,
-          customer_name: customerName || checkout.customer_name || 'Guest',
-          phone: paymentPhone,
-          email: checkout.email,
-          address: checkout.address,
-          items: checkout.items,
-          subtotal: checkout.subtotal,
-          gst: checkout.gst,
-          discount: checkout.discount,
-          total: checkout.total,
-          payment_method: 'GPay',
-          receiptDataUrl: dataUrl,
-          logoDataUrl
-        });
+      const receiptDataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(receiptFile);
+      });
 
-        // upload pdf and attach to order
-        const pdfFile = new File([pdfBlob], `invoice-${order.site_txn}.pdf`, { type: 'application/pdf' });
-        const pdfResp = await uploadFile('order-pdfs', `order-pdfs/${order.site_txn}-invoice.pdf`, pdfFile);
-        const pdf_url = pdfResp?.url || null;
-        const pdf_path = pdfResp?.path || null;
+      const pdfBlob = await generateInvoicePdf({
+        site_txn: order.site_txn,
+        customer_name: customerName || checkout.customer_name || 'Guest',
+        phone: paymentPhone,
+        email: checkout.email,
+        address: checkout.address,
+        items: checkout.items,
+        subtotal: checkout.subtotal,
+        gst: checkout.gst,
+        discount: checkout.discount,
+        total: checkout.total,
+        payment_method: 'GPay',
+        receiptDataUrl,
+        logoDataUrl,
+      });
 
-        // patch order to attach pdf
-        await fetch(`${backendUrl}/api/orders/${order.id}/pdf`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pdf_url, pdf_path })
-        }).catch(() => {});
+      const pdfBase64 = await blobToBase64(pdfBlob);
+      const pdfFilename = `invoice-${order.site_txn}.pdf`;
 
-        // Save site_txn to session so WhatsApp step can include it
-        sessionStorage.setItem('last_order_txn', order.site_txn);
+      const pdfPatchResp = await fetch(`${backendUrl}/api/orders/${order.id}/pdf`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pdf_base64: pdfBase64,
+          pdf_filename: pdfFilename,
+        }),
+      });
+
+      if (!pdfPatchResp.ok) {
+        const err = await pdfPatchResp.json().catch(() => ({}));
+        throw new Error(err?.error || 'Failed to save invoice PDF');
+      }
+
+      const updatedOrder = await pdfPatchResp.json();
+      const pdf_url = updatedOrder?.pdf_url || `${backendUrl}/api/orders/${order.id}/pdf`;
+
+      sessionStorage.setItem('last_order_txn', order.site_txn);
+      try {
+        const updated = { ...(checkout || {}), customer_name: customerName };
+        sessionStorage.setItem('checkout', JSON.stringify(updated));
+      } catch (e) {
+        // ignore session storage failures
+      }
+
+      const shopOwnerNumber = '9876543210';
+      let message = `*Order Confirmed*\nTransaction: ${order.site_txn}\nName: ${order.customer_name || 'Guest'}\nPhone: ${order.phone}\nAddress: ${order.address}\nTotal: ₹${Number(order.total).toFixed(2)}\nItems: ${order.items ? order.items.length : 0}\n`;
+      if (pdf_url) message += `\nInvoice: ${pdf_url}\n`;
+      message += '\nThank you!';
+      const encoded = encodeURIComponent(message);
+      window.open(`https://wa.me/91${shopOwnerNumber}?text=${encoded}`, '_blank');
+      alert(`Order created: ${order.site_txn}. Invoice emailed and available at: ${pdf_url}`);
+
+      if (pdf_url) {
         try {
-          const updated = { ...(checkout || {}), customer_name: customerName };
-          sessionStorage.setItem('checkout', JSON.stringify(updated));
-        } catch (e) {}
-
-        // Open WhatsApp share link and auto-download
-        const shopOwnerNumber = '9876543210';
-        let message = `*Order Confirmed*\nTransaction: ${order.site_txn}\nName: ${order.customer_name || 'Guest'}\nPhone: ${order.phone}\nAddress: ${order.address}\nTotal: ₹${Number(order.total).toFixed(2)}\nItems: ${order.items ? order.items.length : 0}\n`;
-        if (pdf_url) message += `\nInvoice: ${pdf_url}\n`;
-        message += '\nThank you!';
-        const encoded = encodeURIComponent(message);
-        window.open(`https://wa.me/91${shopOwnerNumber}?text=${encoded}`, '_blank');
-        alert(`Order created: ${order.site_txn}. Invoice available: ${pdf_url || 'Not available'}`);
-        if (pdf_url) {
-          try {
-            const link = document.createElement('a');
-            link.href = pdf_url;
-            const sanitize = (s) => String(s || '').replace(/[^a-zA-Z0-9-_ ]/g, '').trim().replace(/\s+/g, '_');
-            const namePart = sanitize(order.customer_name || checkout.customer_name || customerName || 'customer');
-            link.download = `Invoice-${order.site_txn || 'order'}-${namePart}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          } catch (err) { console.warn('Auto-download failed', err); }
+          const link = document.createElement('a');
+          link.href = pdf_url;
+          const sanitize = (s) => String(s || '').replace(/[^a-zA-Z0-9-_ ]/g, '').trim().replace(/\s+/g, '_');
+          const namePart = sanitize(order.customer_name || checkout.customer_name || customerName || 'customer');
+          link.download = `Invoice-${order.site_txn || 'order'}-${namePart}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (err) {
+          console.warn('Auto-download failed', err);
         }
+      }
 
-        if (typeof clearCart === 'function') {
-          clearCart();
-        }
-      };
-      reader.readAsDataURL(receiptFile);
+      if (typeof clearCart === 'function') {
+        clearCart();
+      }
     } catch (err) {
       console.error('Payment: failed to create order', err);
       setErrorMsg(err?.message || 'Failed to create order');

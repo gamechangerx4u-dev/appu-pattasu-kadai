@@ -92,18 +92,24 @@ const buildOrderSummaryHtml = (order, itemsHtml) => `
   </div>
 `;
 
-async function sendMail(transporter, { to, subject, html }) {
+async function sendMail(transporter, { to, subject, html, attachments = [] }) {
   const { user } = getSmtpConfig();
   await transporter.sendMail({
     from: `"Appu Crackers" <${user}>`,
     to,
     subject,
     html,
+    attachments,
   });
 }
 
 export async function sendOrderEmail(order, options = {}) {
-  const { includePdf = false, resend = false } = options;
+  const {
+    includePdf = false,
+    resend = false,
+    pdfBuffer = null,
+    pdfFilename = '',
+  } = options;
   const { user: smtpUser, pass: smtpPass } = getSmtpConfig();
   const storeEmail = (process.env.STORE_EMAIL || 'appucrackers@gmail.com').trim();
   const customerEmail = (order.email || '').trim();
@@ -190,6 +196,12 @@ export async function sendOrderEmail(order, options = {}) {
   }
 
   const transporter = getTransporter();
+  const attachmentName = pdfFilename || `invoice-${order.site_txn || 'order'}.pdf`;
+  const attachments = pdfBuffer ? [{
+    filename: attachmentName,
+    content: pdfBuffer,
+    contentType: 'application/pdf',
+  }] : [];
 
   try {
     if (!resend) {
@@ -199,17 +211,18 @@ export async function sendOrderEmail(order, options = {}) {
         html: adminEmailHtml,
       });
       console.log(`Store notification sent to ${storeEmail} for order ${order.site_txn}`);
-    } else if (order.pdf_url) {
+    } else if (order.pdf_url || pdfBuffer) {
       await sendMail(transporter, {
         to: storeEmail,
         subject: `[Appu Crackers] Invoice Ready - ${order.site_txn}`,
         html: adminEmailHtml,
+        attachments,
       });
       console.log(`Store invoice notification sent to ${storeEmail} for order ${order.site_txn}`);
     }
 
     if (customerEmail) {
-      const customerSubject = includePdf && order.pdf_url
+      const customerSubject = includePdf && (order.pdf_url || pdfBuffer)
         ? `[Appu Crackers] Your Invoice - ${order.site_txn}`
         : `[Appu Crackers] Your Order Confirmation - ${order.site_txn}`;
 
@@ -217,13 +230,17 @@ export async function sendOrderEmail(order, options = {}) {
         to: customerEmail,
         subject: customerSubject,
         html: customerEmailHtml,
+        attachments: includePdf ? attachments : [],
       });
       console.log(`Customer confirmation sent to ${customerEmail} for order ${order.site_txn}`);
+    } else if (!customerEmail) {
+      console.warn(`No customer email on order ${order.site_txn} — customer notification skipped`);
     }
 
     return true;
   } catch (error) {
-    console.error('Failed to send order email:', error);
+    console.error('Failed to send order email:', error?.message || error);
+    if (error?.response) console.error('SMTP response:', error.response);
     return false;
   }
 }

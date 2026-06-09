@@ -17,6 +17,8 @@ const OrderSchema = new mongoose.Schema({
   pdf_url: String,
   receipt_path: String,
   pdf_path: String,
+  invoice_pdf: { type: Buffer, select: false },
+  invoice_pdf_filename: { type: String, default: '' },
   status: { type: String, default: 'pending' },
   created_at: { type: Date, default: Date.now },
 }, { versionKey: false });

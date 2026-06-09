@@ -4,13 +4,17 @@ import { Order } from '../models/Order.js';
 import { requireAdminAuth } from '../lib/adminAuth.js';
 import { sendOrderEmail } from '../lib/email.js';
 import { decrementProductStock } from '../lib/productLookup.js';
+import { buildOrderPdfUrl } from '../lib/publicUrl.js';
 
 const router = express.Router();
 
-const serializeOrder = (order) => ({
-  ...order,
-  id: order.id || String(order._id),
-});
+const serializeOrder = (order) => {
+  const { invoice_pdf, ...safeOrder } = order;
+  return {
+    ...safeOrder,
+    id: safeOrder.id || String(safeOrder._id),
+  };
+};
 
 const normalizeOrderItems = (items = []) => {
   if (!Array.isArray(items) || !items.length) {
@@ -82,7 +86,11 @@ router.post('/', async (req, res) => {
 
     const createdOrder = await createOrderWithStockUpdate(orderPayload);
 
-    void sendOrderEmail(createdOrder, { includePdf: Boolean(createdOrder.pdf_url) });
+    try {
+      await sendOrderEmail(createdOrder);
+    } catch (emailError) {
+      console.error('Order created but email failed:', emailError);
+    }
 
     res.status(201).json(serializeOrder(createdOrder));
   } catch (error) {
@@ -98,6 +106,31 @@ router.get('/', requireAdminAuth, async (req, res) => {
   } catch (error) {
     console.error('Error fetching orders:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/:id/pdf', async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .select('invoice_pdf invoice_pdf_filename site_txn')
+      .lean();
+
+    if (!order?.invoice_pdf) {
+      return res.status(404).json({ error: 'Invoice PDF not found' });
+    }
+
+    const filename = order.invoice_pdf_filename || `invoice-${order.site_txn || 'order'}.pdf`;
+    const pdfBuffer = Buffer.isBuffer(order.invoice_pdf)
+      ? order.invoice_pdf
+      : Buffer.from(order.invoice_pdf.buffer || order.invoice_pdf);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error fetching order PDF:', error);
+    res.status(400).json({ error: error.message });
   }
 });
 
@@ -118,16 +151,43 @@ router.patch('/:id/status', requireAdminAuth, async (req, res) => {
 
 router.patch('/:id/pdf', async (req, res) => {
   try {
-    const { pdf_url, pdf_path } = req.body;
+    const { pdf_base64, pdf_filename } = req.body;
+    if (!pdf_base64) {
+      return res.status(400).json({ error: 'pdf_base64 is required' });
+    }
+
+    const pdfBuffer = Buffer.from(pdf_base64, 'base64');
+    if (!pdfBuffer.length) {
+      return res.status(400).json({ error: 'Invalid PDF payload' });
+    }
+
+    const existing = await Order.findById(req.params.id).lean();
+    if (!existing) return res.status(404).json({ error: 'Order not found' });
+
+    const filename = pdf_filename || `invoice-${existing.site_txn || 'order'}.pdf`;
+    const pdfUrl = buildOrderPdfUrl(req, req.params.id);
+
     const order = await Order.findByIdAndUpdate(
       req.params.id,
-      { pdf_url: pdf_url || '', pdf_path: pdf_path || '' },
+      {
+        invoice_pdf: pdfBuffer,
+        invoice_pdf_filename: filename,
+        pdf_url: pdfUrl,
+        pdf_path: '',
+      },
       { new: true }
     ).lean();
 
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-
-    void sendOrderEmail(order, { includePdf: true, resend: true });
+    try {
+      await sendOrderEmail(order, {
+        includePdf: true,
+        resend: true,
+        pdfBuffer,
+        pdfFilename: filename,
+      });
+    } catch (emailError) {
+      console.error('PDF saved but email failed:', emailError);
+    }
 
     res.json(serializeOrder(order));
   } catch (error) {

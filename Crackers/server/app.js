@@ -23,8 +23,8 @@ app.use(cors({
   origin: getAllowedOrigins(),
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const uploadsRoot = path.resolve(serverDir, 'uploads');
