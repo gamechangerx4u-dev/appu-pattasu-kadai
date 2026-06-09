@@ -1,13 +1,9 @@
 import express from 'express';
-import fsSync from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { createAdminToken, requireAdminAuth, validateAdminPassword, hashPassword } from '../lib/adminAuth.js';
 import { AdminAuth } from '../models/AdminAuth.js';
+import { buildMediaUrl, getLatestMediaByKind } from '../lib/mediaStorage.js';
 
 const router = express.Router();
-const serverDir = path.dirname(fileURLToPath(import.meta.url));
-const uploadsRoot = path.resolve(serverDir, '..', 'uploads');
 
 router.post('/login', async (req, res) => {
   try {
@@ -52,14 +48,12 @@ router.post('/password', requireAdminAuth, async (req, res) => {
 
 router.get('/qr', async (req, res) => {
   try {
-    const relativePath = path.join('admin-qr', 'active-gpay-qr.png');
-    const filePath = path.join(uploadsRoot, relativePath);
-    if (!fsSync.existsSync(filePath)) {
+    const media = await getLatestMediaByKind('admin-qr');
+    if (!media?._id) {
       return res.json({ url: null });
     }
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    return res.json({ url: `${baseUrl}/uploads/${relativePath.split(path.sep).join('/')}` });
+    return res.json({ url: buildMediaUrl(req, String(media._id)) });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

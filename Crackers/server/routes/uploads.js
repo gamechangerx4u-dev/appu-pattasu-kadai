@@ -1,33 +1,23 @@
 import express from 'express';
-import fs from 'fs/promises';
-import path from 'path';
 import multer from 'multer';
-import { fileURLToPath } from 'url';
 import { verifyAdminToken } from '../lib/adminAuth.js';
+import { buildMediaUrl, saveMedia } from '../lib/mediaStorage.js';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
-const serverDir = path.dirname(fileURLToPath(import.meta.url));
-const uploadsRoot = path.resolve(serverDir, '..', 'uploads');
-
-const ensureDir = async (dirPath) => {
-  await fs.mkdir(dirPath, { recursive: true });
-};
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
 
 const safeName = (name) => name.replace(/[^a-zA-Z0-9._-]/g, '_');
-
-const writeFile = async (targetPath, buffer) => {
-  await ensureDir(path.dirname(targetPath));
-  await fs.writeFile(targetPath, buffer);
-};
-
-const buildUrl = (req, relativePath) => `${req.protocol}://${req.get('host')}/uploads/${relativePath.split(path.sep).join('/')}`;
 
 const hasAdminToken = (req) => {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : req.headers['x-admin-token'];
   return verifyAdminToken(token);
 };
+
+const allowedImageTypes = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
 
 router.post('/', upload.single('file'), async (req, res) => {
   try {
@@ -37,43 +27,62 @@ router.post('/', upload.single('file'), async (req, res) => {
 
     const kind = String(req.body?.kind || '');
     const filename = safeName(req.file.originalname || 'file');
+    const contentType = req.file.mimetype || 'application/octet-stream';
 
-    let relativePath;
+    let mediaKind;
     let needsAdminAuth = false;
+    let replaceExisting = false;
 
     switch (kind) {
       case 'product-image':
-        relativePath = path.join('product-images', `${Date.now()}-${filename}`);
+        mediaKind = 'product-image';
         needsAdminAuth = true;
+        if (!allowedImageTypes.has(contentType)) {
+          return res.status(400).json({ error: 'Only PNG, JPEG, JPG, or WEBP images are allowed' });
+        }
         break;
       case 'admin-qr':
-        relativePath = path.join('admin-qr', 'active-gpay-qr.png');
+        mediaKind = 'admin-qr';
         needsAdminAuth = true;
+        replaceExisting = true;
+        if (!allowedImageTypes.has(contentType)) {
+          return res.status(400).json({ error: 'Only PNG, JPEG, JPG, or WEBP images are allowed' });
+        }
         break;
       case 'order-receipt':
-        relativePath = path.join('order-receipts', `${Date.now()}-${filename}`);
+        mediaKind = 'order-receipt';
+        if (!allowedImageTypes.has(contentType)) {
+          return res.status(400).json({ error: 'Only PNG, JPEG, JPG, or WEBP images are allowed' });
+        }
         break;
       case 'order-pdf':
-        relativePath = path.join('order-pdfs', `${Date.now()}-${filename}`);
-        break;
+        return res.status(400).json({ error: 'PDF uploads are disabled. Save invoices through /api/orders/:id/pdf.' });
       default:
         return res.status(400).json({ error: 'Invalid upload kind' });
     }
 
-    if (needsAdminAuth) {
-      if (!hasAdminToken(req)) {
-        return res.status(401).json({ error: 'Admin authorization required' });
-      }
+    if (needsAdminAuth && !hasAdminToken(req)) {
+      return res.status(401).json({ error: 'Admin authorization required' });
     }
 
-    const targetPath = path.join(uploadsRoot, relativePath);
-    await writeFile(targetPath, req.file.buffer);
+    const media = await saveMedia({
+      kind: mediaKind,
+      buffer: req.file.buffer,
+      contentType,
+      filename,
+      replaceExisting,
+    });
+
+    const mediaId = String(media._id);
+    const url = buildMediaUrl(req, mediaId);
 
     return res.json({
-      url: buildUrl(req, relativePath),
-      path: relativePath,
+      id: mediaId,
+      url,
+      path: mediaId,
     });
   } catch (error) {
+    console.error('Upload failed:', error);
     return res.status(500).json({ error: error.message });
   }
 });
