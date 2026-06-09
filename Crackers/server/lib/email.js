@@ -1,26 +1,83 @@
 import nodemailer from 'nodemailer';
 
-export async function sendOrderEmail(order) {
-  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const smtpPort = Number(process.env.SMTP_PORT || 587);
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
-  const recipientEmail = 'appucrackers@gmail.com';
+const getSmtpConfig = () => ({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: Number(process.env.SMTP_PORT || 587),
+  user: process.env.SMTP_USER,
+  pass: process.env.SMTP_PASS,
+});
 
-  const itemsHtml = (order.items || []).map(item => {
-    const qty = Number(item.quantity || 1);
-    const price = Number(item.ourPrice || item.price || 0);
-    return `
-      <tr>
-        <td style="padding: 10px; border-bottom: 1px solid #eee;">${item.name}</td>
-        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${qty}</td>
-        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">₹${price.toFixed(2)}</td>
-        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right; fontWeight: bold;">₹${(qty * price).toFixed(2)}</td>
+const buildItemsHtml = (order) => (order.items || []).map((item) => {
+  const qty = Number(item.quantity || 1);
+  const price = Number(item.ourPrice || item.price || 0);
+  return `
+    <tr>
+      <td style="padding: 10px; border-bottom: 1px solid #eee;">${item.name}</td>
+      <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${qty}</td>
+      <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">₹${price.toFixed(2)}</td>
+      <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right; fontWeight: bold;">₹${(qty * price).toFixed(2)}</td>
+    </tr>
+  `;
+}).join('');
+
+const buildOrderSummaryHtml = (order, itemsHtml) => `
+  <h3 style="border-bottom: 2px solid #e63946; padding-bottom: 8px; color: #b00020;">Order Summary</h3>
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+    <thead>
+      <tr style="background: #f8f9fa;">
+        <th style="padding: 10px; text-align: left; border-bottom: 2px solid #eee;">Item</th>
+        <th style="padding: 10px; text-align: center; border-bottom: 2px solid #eee; width: 60px;">Qty</th>
+        <th style="padding: 10px; text-align: right; border-bottom: 2px solid #eee; width: 100px;">Price</th>
+        <th style="padding: 10px; text-align: right; border-bottom: 2px solid #eee; width: 100px;">Total</th>
       </tr>
-    `;
-  }).join('');
+    </thead>
+    <tbody>
+      ${itemsHtml}
+    </tbody>
+  </table>
 
-  const emailHtml = `
+  <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
+    <table style="width: 100%; font-size: 15px;">
+      <tr>
+        <td style="padding: 4px 0; color: #666;">Subtotal:</td>
+        <td style="padding: 4px 0; text-align: right; font-weight: bold;">₹${Number(order.subtotal || 0).toFixed(2)}</td>
+      </tr>
+      <tr>
+        <td style="padding: 4px 0; color: #666;">GST:</td>
+        <td style="padding: 4px 0; text-align: right; font-weight: bold;">₹${Number(order.gst || 0).toFixed(2)}</td>
+      </tr>
+      ${order.discount ? `
+      <tr>
+        <td style="padding: 4px 0; color: #666;">Discount:</td>
+        <td style="padding: 4px 0; text-align: right; font-weight: bold; color: #e63946;">-₹${Number(order.discount).toFixed(2)}</td>
+      </tr>
+      ` : ''}
+      <tr style="border-top: 1px solid #ddd; font-size: 18px;">
+        <td style="padding: 12px 0 0 0; font-weight: bold; color: #b00020;">Grand Total:</td>
+        <td style="padding: 12px 0 0 0; text-align: right; font-weight: bold; color: #b00020;">₹${Number(order.total || 0).toFixed(2)}</td>
+      </tr>
+    </table>
+  </div>
+`;
+
+async function sendMail(transporter, { to, subject, html }) {
+  const { user } = getSmtpConfig();
+  await transporter.sendMail({
+    from: `"Appu Crackers" <${user}>`,
+    to,
+    subject,
+    html,
+  });
+}
+
+export async function sendOrderEmail(order) {
+  const { host: smtpHost, port: smtpPort, user: smtpUser, pass: smtpPass } = getSmtpConfig();
+  const storeEmail = process.env.STORE_EMAIL || 'appucrackers@gmail.com';
+  const customerEmail = (order.email || '').trim();
+
+  const itemsHtml = buildItemsHtml(order);
+
+  const adminEmailHtml = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
       <div style="background: linear-gradient(135deg, #e63946, #b00020); color: #fff; padding: 25px; text-align: center;">
         <h1 style="margin: 0; font-size: 24px; letter-spacing: 1px;">New Order Placed</h1>
@@ -51,43 +108,7 @@ export async function sendOrderEmail(order) {
           </tr>
         </table>
 
-        <h3 style="border-bottom: 2px solid #e63946; padding-bottom: 8px; color: #b00020;">Order Summary</h3>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
-          <thead>
-            <tr style="background: #f8f9fa;">
-              <th style="padding: 10px; text-align: left; border-bottom: 2px solid #eee;">Item</th>
-              <th style="padding: 10px; text-align: center; border-bottom: 2px solid #eee; width: 60px;">Qty</th>
-              <th style="padding: 10px; text-align: right; border-bottom: 2px solid #eee; width: 100px;">Price</th>
-              <th style="padding: 10px; text-align: right; border-bottom: 2px solid #eee; width: 100px;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${itemsHtml}
-          </tbody>
-        </table>
-
-        <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
-          <table style="width: 100%; font-size: 15px;">
-            <tr>
-              <td style="padding: 4px 0; color: #666;">Subtotal:</td>
-              <td style="padding: 4px 0; text-align: right; font-weight: bold;">₹${Number(order.subtotal || 0).toFixed(2)}</td>
-            </tr>
-            <tr>
-              <td style="padding: 4px 0; color: #666;">GST:</td>
-              <td style="padding: 4px 0; text-align: right; font-weight: bold;">₹${Number(order.gst || 0).toFixed(2)}</td>
-            </tr>
-            ${order.discount ? `
-            <tr>
-              <td style="padding: 4px 0; color: #666;">Discount:</td>
-              <td style="padding: 4px 0; text-align: right; font-weight: bold; color: #e63946;">-₹${Number(order.discount).toFixed(2)}</td>
-            </tr>
-            ` : ''}
-            <tr style="border-top: 1px solid #ddd; font-size: 18px;">
-              <td style="padding: 12px 0 0 0; font-weight: bold; color: #b00020;">Grand Total:</td>
-              <td style="padding: 12px 0 0 0; text-align: right; font-weight: bold; color: #b00020;">₹${Number(order.total || 0).toFixed(2)}</td>
-            </tr>
-          </table>
-        </div>
+        ${buildOrderSummaryHtml(order, itemsHtml)}
 
         ${order.pdf_url ? `
         <div style="text-align: center; margin-top: 25px;">
@@ -101,12 +122,31 @@ export async function sendOrderEmail(order) {
     </div>
   `;
 
-  // If credentials aren't set, output a log representation for test/debug
+  const customerEmailHtml = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+      <div style="background: linear-gradient(135deg, #e63946, #b00020); color: #fff; padding: 25px; text-align: center;">
+        <h1 style="margin: 0; font-size: 24px; letter-spacing: 1px;">Order Confirmed</h1>
+        <p style="margin: 5px 0 0 0; font-size: 16px; opacity: 0.9;">Thank you for shopping with Appu Crackers</p>
+      </div>
+      <div style="padding: 25px; background: #ffffff; color: #333333;">
+        <p style="margin-top: 0;">Hi ${order.customer_name || 'Customer'},</p>
+        <p>We received your order and it is being processed. Your transaction ID is <strong>${order.site_txn}</strong>.</p>
+        <p><strong>Delivery address:</strong><br>${order.address || 'Not provided'}</p>
+        <p><strong>Phone:</strong> ${order.phone || 'Not provided'}</p>
+        ${buildOrderSummaryHtml(order, itemsHtml)}
+        <p style="margin-bottom: 0;">If you have any questions, reply to this email or contact us at ${storeEmail}.</p>
+      </div>
+      <div style="background: #f1f1f1; text-align: center; padding: 15px; font-size: 12px; color: #777;">
+        Appu Crackers — appucrackers.in
+      </div>
+    </div>
+  `;
+
   if (!smtpUser || !smtpPass) {
-    console.warn('--- EMAIL NOTIFICATION LOG (SMTP credentials missing in .env) ---');
-    console.warn(`To: ${recipientEmail}`);
+    console.warn('--- EMAIL NOTIFICATION LOG (SMTP credentials missing) ---');
+    console.warn(`Store notification to: ${storeEmail}`);
+    console.warn(`Customer confirmation to: ${customerEmail || '(no customer email provided)'}`);
     console.warn(`Subject: New Order - ${order.site_txn}`);
-    console.warn(`Text representation:\nCustomer: ${order.customer_name}\nTotal: ₹${order.total}\nPhone: ${order.phone}`);
     console.warn('------------------------------------------------------------------');
     return;
   }
@@ -114,7 +154,7 @@ export async function sendOrderEmail(order) {
   const transporter = nodemailer.createTransport({
     host: smtpHost,
     port: smtpPort,
-    secure: smtpPort === 465, // true for 465, false for other ports
+    secure: smtpPort === 465,
     auth: {
       user: smtpUser,
       pass: smtpPass,
@@ -122,14 +162,22 @@ export async function sendOrderEmail(order) {
   });
 
   try {
-    await transporter.sendMail({
-      from: `"Appu Crackers System" <${smtpUser}>`,
-      to: recipientEmail,
+    await sendMail(transporter, {
+      to: storeEmail,
       subject: `[Appu Crackers] New Order Placed - ${order.site_txn}`,
-      html: emailHtml,
+      html: adminEmailHtml,
     });
-    console.log(`Email notification sent to ${recipientEmail} for order ${order.site_txn}`);
+    console.log(`Store notification sent to ${storeEmail} for order ${order.site_txn}`);
+
+    if (customerEmail) {
+      await sendMail(transporter, {
+        to: customerEmail,
+        subject: `[Appu Crackers] Your Order Confirmation - ${order.site_txn}`,
+        html: customerEmailHtml,
+      });
+      console.log(`Customer confirmation sent to ${customerEmail} for order ${order.site_txn}`);
+    }
   } catch (error) {
-    console.error('Failed to send order notification email:', error);
+    console.error('Failed to send order email:', error);
   }
 }
