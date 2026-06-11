@@ -55,6 +55,13 @@ router.post('/', upload.single('file'), async (req, res) => {
           return res.status(400).json({ error: 'Only PNG, JPEG, JPG, or WEBP images are allowed' });
         }
         break;
+      case 'hero-banner':
+        mediaKind = 'hero-banner';
+        needsAdminAuth = true;
+        if (!allowedImageTypes.has(contentType)) {
+          return res.status(400).json({ error: 'Only PNG, JPEG, JPG, or WEBP images are allowed' });
+        }
+        break;
       case 'order-pdf':
         return res.status(400).json({ error: 'PDF uploads are disabled. Save invoices through /api/orders/:id/pdf.' });
       default:

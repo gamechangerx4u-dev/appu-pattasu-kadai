@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import Hero from '../components/Hero';
+import BannerCarousel from '../components/BannerCarousel';
+import Seo from '../components/Seo';
 import CategoryList from '../components/CategoryList';
 import ProductCard from '../components/ProductCard';
 import PriceFilter from '../components/PriceFilter';
 import SearchBar from '../components/SearchBar';
 import { ChevronRight } from 'lucide-react';
-import { Helmet } from 'react-helmet-async';
 
 const Home = ({
   onAddToCart,
@@ -44,15 +44,20 @@ const Home = ({
     return list.filter(p => (p.ourPrice || 0) >= minPrice && (p.ourPrice || 0) <= maxPrice);
   }, [products, activeCategory, searchQuery, minPrice, maxPrice]);
 
+  const pagePath = activeCategory === 'All' ? '/' : `/product-category/${categorySlug}`;
+  const pageTitle = activeCategory === 'All' ? null : activeCategory;
+  const pageDescription = activeCategory === 'All'
+    ? undefined
+    : `Shop ${activeCategory} crackers online at Appu Crackers. Premium Sivakasi fireworks for Diwali and celebrations.`;
+
   return (
     <div>
-      <Helmet>
-        <title>{activeCategory === 'All' ? 'All Crackers — Appu Crackers' : `${activeCategory} — Appu Crackers`}</title>
-        <meta name="description" content={`Shop ${activeCategory === 'All' ? 'all crackers' : activeCategory} at Appu Crackers — quality crackers and festive favorites.`} />
-      </Helmet>
-      <div className="mobile-only-block">
-        <Hero />
-      </div>
+      <Seo
+        title={pageTitle}
+        description={pageDescription}
+        path={pagePath}
+      />
+      <BannerCarousel />
       <section className="container" style={{ padding: '2rem 40px' }}>
         
         {/* Breadcrumb */}
@@ -93,10 +98,6 @@ const Home = ({
           </div>
         
           <div style={{ flex: 1 }}>
-            <div className="desktop-only" style={{ marginBottom: '2rem' }}>
-              <Hero />
-            </div>
-            
             <div className="product-grid">
               {loading && products.length === 0 && (
                 <div style={{ padding: '2rem', gridColumn: '1 / -1', textAlign: 'center', color: 'var(--text-muted)' }}>

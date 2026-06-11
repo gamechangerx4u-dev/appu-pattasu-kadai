@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const MediaSchema = new mongoose.Schema({
   kind: {
     type: String,
-    enum: ['product-image', 'admin-qr', 'order-receipt'],
+    enum: ['product-image', 'admin-qr', 'order-receipt', 'hero-banner'],
     required: true,
     index: true,
   },

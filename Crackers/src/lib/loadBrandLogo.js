@@ -1,9 +1,9 @@
-const LOGO_PATH = '/logo.jpg';
+import brandLogo from '../assets/logo.jpg';
 
 export async function loadBrandLogo() {
   try {
-    const response = await fetch(LOGO_PATH);
-    if (!response.ok) return null;
+    const response = await fetch(brandLogo);
+    if (!response.ok) return brandLogo;
 
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
@@ -13,6 +13,8 @@ export async function loadBrandLogo() {
       reader.readAsDataURL(blob);
     });
   } catch {
-    return null;
+    return brandLogo;
   }
 }
+
+export { brandLogo };
