@@ -1,42 +1,139 @@
+import dns from 'dns';
 import nodemailer from 'nodemailer';
 
+dns.setDefaultResultOrder('ipv4first');
+
 let cachedTransporter = null;
+let smtpReady = false;
+let emailProvider = 'none';
+
+const getEmailProvider = () => {
+  if (process.env.RESEND_API_KEY) return 'resend';
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) return 'smtp';
+  return 'none';
+};
+
+const getFromAddress = () => {
+  if (process.env.RESEND_FROM) return process.env.RESEND_FROM.trim();
+  const user = (process.env.SMTP_USER || 'appucrackers@gmail.com').trim();
+  return `"Appu Crackers" <${user}>`;
+};
+
+const ipv4Lookup = (hostname, options, callback) => {
+  dns.lookup(hostname, { family: 4 }, callback);
+};
 
 const getSmtpConfig = () => ({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: Number(process.env.SMTP_PORT || 587),
+  host: (process.env.SMTP_HOST || 'smtp.gmail.com').trim(),
+  port: Number(process.env.SMTP_PORT || 465),
   user: (process.env.SMTP_USER || '').trim(),
   pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''),
 });
 
-export async function verifyEmailTransport() {
-  const { user, pass } = getSmtpConfig();
-  if (!user || !pass) return false;
-
-  try {
-    const transporter = getTransporter();
-    await transporter.verify();
-    console.log(`SMTP ready for ${user}`);
-    return true;
-  } catch (error) {
-    console.error('SMTP verification failed:', error.message);
-    return false;
-  }
+export function isSmtpReady() {
+  return smtpReady;
 }
 
-function getTransporter() {
-  if (cachedTransporter) return cachedTransporter;
+export function getEmailStatus() {
+  return {
+    provider: emailProvider,
+    ready: smtpReady,
+  };
+}
 
+function resetTransporter() {
+  cachedTransporter = null;
+  smtpReady = false;
+}
+
+function buildTransportOptions() {
   const { host, port, user, pass } = getSmtpConfig();
-  cachedTransporter = nodemailer.createTransport({
+
+  if (host === 'smtp.gmail.com') {
+    return {
+      service: 'gmail',
+      auth: { user, pass },
+      lookup: ipv4Lookup,
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
+    };
+  }
+
+  return {
     host,
     port,
     secure: port === 465,
     auth: { user, pass },
     tls: { minVersion: 'TLSv1.2' },
-  });
+    lookup: ipv4Lookup,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+  };
+}
 
+function getTransporter() {
+  if (cachedTransporter) return cachedTransporter;
+  cachedTransporter = nodemailer.createTransport(buildTransportOptions());
   return cachedTransporter;
+}
+
+async function verifyResend() {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return false;
+
+  try {
+    const response = await fetch('https://api.resend.com/domains', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(body || `Resend API returned ${response.status}`);
+    }
+    emailProvider = 'resend';
+    smtpReady = true;
+    console.log('Resend email provider ready (HTTPS — works on Render free tier)');
+    return true;
+  } catch (error) {
+    smtpReady = false;
+    emailProvider = 'none';
+    console.error('Resend verification failed:', error.message);
+    return false;
+  }
+}
+
+export async function verifyEmailTransport() {
+  emailProvider = getEmailProvider();
+
+  if (emailProvider === 'resend') {
+    return verifyResend();
+  }
+
+  const { user, pass } = getSmtpConfig();
+  if (!user || !pass) {
+    smtpReady = false;
+    emailProvider = 'none';
+    console.warn('No email provider configured. Add RESEND_API_KEY (Render free tier) or SMTP credentials (paid Render / local).');
+    return false;
+  }
+
+  try {
+    resetTransporter();
+    const transporter = getTransporter();
+    await transporter.verify();
+    emailProvider = 'smtp';
+    smtpReady = true;
+    console.log(`SMTP ready for ${user} (IPv4)`);
+    return true;
+  } catch (error) {
+    smtpReady = false;
+    emailProvider = 'smtp';
+    console.error('SMTP verification failed:', error.message);
+    if (error.code) console.error('SMTP error code:', error.code);
+    console.error('Render free tier blocks SMTP ports 25/465/587. Use RESEND_API_KEY instead, or upgrade Render to a paid plan.');
+    return false;
+  }
 }
 
 const buildItemsHtml = (order) => (order.items || []).map((item) => {
@@ -92,7 +189,39 @@ const buildOrderSummaryHtml = (order, itemsHtml) => `
   </div>
 `;
 
-async function sendMail(transporter, { to, subject, html, attachments = [] }) {
+async function sendViaResend({ to, subject, html, attachments = [] }) {
+  const payload = {
+    from: getFromAddress(),
+    to: [to],
+    subject,
+    html,
+  };
+
+  if (attachments.length) {
+    payload.attachments = attachments.map((file) => ({
+      filename: file.filename,
+      content: Buffer.isBuffer(file.content)
+        ? file.content.toString('base64')
+        : file.content,
+    }));
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(body || `Resend send failed with ${response.status}`);
+  }
+}
+
+async function sendViaSmtp(transporter, { to, subject, html, attachments = [] }) {
   const { user } = getSmtpConfig();
   await transporter.sendMail({
     from: `"Appu Crackers" <${user}>`,
@@ -103,6 +232,14 @@ async function sendMail(transporter, { to, subject, html, attachments = [] }) {
   });
 }
 
+async function sendMail(transporter, mailOptions) {
+  if (emailProvider === 'resend') {
+    await sendViaResend(mailOptions);
+    return;
+  }
+  await sendViaSmtp(transporter, mailOptions);
+}
+
 export async function sendOrderEmail(order, options = {}) {
   const {
     includePdf = false,
@@ -110,7 +247,8 @@ export async function sendOrderEmail(order, options = {}) {
     pdfBuffer = null,
     pdfFilename = '',
   } = options;
-  const { user: smtpUser, pass: smtpPass } = getSmtpConfig();
+  if (emailProvider === 'none') emailProvider = getEmailProvider();
+
   const storeEmail = (process.env.STORE_EMAIL || 'appucrackers@gmail.com').trim();
   const customerEmail = (order.email || '').trim();
 
@@ -186,8 +324,8 @@ export async function sendOrderEmail(order, options = {}) {
     </div>
   `;
 
-  if (!smtpUser || !smtpPass) {
-    console.warn('--- EMAIL NOTIFICATION LOG (SMTP credentials missing) ---');
+  if (emailProvider === 'none') {
+    console.warn('--- EMAIL NOTIFICATION LOG (no email provider configured) ---');
     console.warn(`Store notification to: ${storeEmail}`);
     console.warn(`Customer confirmation to: ${customerEmail || '(no customer email provided)'}`);
     console.warn(`Subject: New Order - ${order.site_txn}`);
@@ -195,7 +333,11 @@ export async function sendOrderEmail(order, options = {}) {
     return false;
   }
 
-  const transporter = getTransporter();
+  if (!smtpReady) {
+    console.warn(`Email provider not verified — attempting send for order ${order.site_txn}`);
+  }
+
+  const transporter = emailProvider === 'smtp' ? getTransporter() : null;
   const attachmentName = pdfFilename || `invoice-${order.site_txn || 'order'}.pdf`;
   const attachments = pdfBuffer ? [{
     filename: attachmentName,
@@ -233,13 +375,16 @@ export async function sendOrderEmail(order, options = {}) {
         attachments: includePdf ? attachments : [],
       });
       console.log(`Customer confirmation sent to ${customerEmail} for order ${order.site_txn}`);
-    } else if (!customerEmail) {
+    } else {
       console.warn(`No customer email on order ${order.site_txn} — customer notification skipped`);
     }
 
     return true;
   } catch (error) {
+    smtpReady = false;
+    resetTransporter();
     console.error('Failed to send order email:', error?.message || error);
+    if (error?.code) console.error('SMTP error code:', error.code);
     if (error?.response) console.error('SMTP response:', error.response);
     return false;
   }

@@ -11,7 +11,7 @@ import mediaRouter from './routes/media.js';
 import { seedAdminPassword } from './lib/adminAuth.js';
 import { validateEnv, getAllowedOrigins } from './lib/env.js';
 import { ensureProductIds } from './lib/productLookup.js';
-import { verifyEmailTransport } from './lib/email.js';
+import { verifyEmailTransport, getEmailStatus } from './lib/email.js';
 
 dotenv.config();
 validateEnv();
@@ -26,9 +26,11 @@ app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 app.get('/health', (req, res) => {
+  const email = getEmailStatus();
   res.json({
     ok: true,
-    smtp: Boolean(process.env.SMTP_USER && process.env.SMTP_PASS),
+    emailProvider: email.provider,
+    emailReady: email.ready,
     env: process.env.NODE_ENV || 'development',
   });
 });
