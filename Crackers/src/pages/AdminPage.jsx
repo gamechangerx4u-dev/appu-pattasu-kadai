@@ -16,6 +16,14 @@ import {
 } from '../lib/adminOperations';
 import { loginAdmin, logoutAdmin, getAdminToken, updateAdminPassword } from '../lib/adminAuth';
 import { fetchOrders, updateOrderStatus } from '../lib/orders';
+import {
+  fetchAllBanners,
+  createBanner,
+  deleteBanner,
+  toggleBannerActive,
+  reorderBanners,
+  uploadBannerImage,
+} from '../lib/banners';
 
 const AdminPage = () => {
   const navigate = useNavigate();
@@ -33,6 +41,9 @@ const AdminPage = () => {
   const [adminQRFile, setAdminQRFile] = useState(null);
   const [adminQRUrl, setAdminQRUrl] = useState(null);
   const [orders, setOrders] = useState([]);
+  const [banners, setBanners] = useState([]);
+  const [bannerFile, setBannerFile] = useState(null);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -72,6 +83,12 @@ const AdminPage = () => {
       } catch (error) {
         console.warn('Failed to load orders', error);
       }
+      try {
+        const bannersData = await fetchAllBanners();
+        setBanners(bannersData);
+      } catch (error) {
+        console.warn('Failed to load banners', error);
+      }
     } catch (error) {
       console.error('Failed to load data:', error);
       alert('Failed to load data from MongoDB API');
@@ -82,6 +99,7 @@ const AdminPage = () => {
 
   useEffect(() => {
     if (getAdminToken()) {
+      setIsAuthenticated(true);
       const timer = setTimeout(() => {
         void loadData();
       }, 0);
@@ -118,6 +136,63 @@ const AdminPage = () => {
     setIsAuthenticated(false);
     setPassword('');
     navigate('/');
+  };
+
+  const handleBannerUpload = async () => {
+    if (!bannerFile) return alert('Choose a banner image first');
+    try {
+      setUploadingBanner(true);
+      let uploadFile = bannerFile;
+      try {
+        const { compressImage } = await import('../utils/imageCompressor');
+        uploadFile = await compressImage(bannerFile, { maxWidth: 1600, quality: 0.85 });
+      } catch {
+        // use original file
+      }
+      const uploaded = await uploadBannerImage(uploadFile);
+      await createBanner({ image_url: uploaded.url, media_id: uploaded.id });
+      setBannerFile(null);
+      const bannersData = await fetchAllBanners();
+      setBanners(bannersData);
+      alert('Banner added');
+    } catch (error) {
+      alert(error.message || 'Failed to upload banner');
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
+  const handleDeleteBanner = async (id) => {
+    if (!window.confirm('Delete this banner?')) return;
+    try {
+      await deleteBanner(id);
+      setBanners((prev) => prev.filter((banner) => banner.id !== id));
+    } catch (error) {
+      alert(error.message || 'Failed to delete banner');
+    }
+  };
+
+  const handleToggleBanner = async (banner) => {
+    try {
+      const updated = await toggleBannerActive(banner.id, !banner.active);
+      setBanners((prev) => prev.map((item) => (item.id === banner.id ? updated : item)));
+    } catch (error) {
+      alert(error.message || 'Failed to update banner');
+    }
+  };
+
+  const moveBanner = async (index, direction) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= banners.length) return;
+    const reordered = [...banners];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(targetIndex, 0, moved);
+    try {
+      const updated = await reorderBanners(reordered.map((banner) => banner.id));
+      setBanners(updated);
+    } catch (error) {
+      alert(error.message || 'Failed to reorder banners');
+    }
   };
 
   const handleChangePassword = async (e) => {
@@ -509,6 +584,83 @@ const AdminPage = () => {
             </button>
           </div>
         </form>
+      </div>
+
+      {/* Hero Banners */}
+      <div style={{ background: 'var(--glass-bg)', padding: '1.5rem', borderRadius: '1rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          <h3 style={{ margin: 0 }}>Homepage Banners</h3>
+          <span style={{ color: 'var(--text-muted)' }}>{banners.length} total</span>
+        </div>
+        <p style={{ color: 'var(--text-muted)', marginTop: 0, marginBottom: '1rem' }}>
+          Image-only banners rotate automatically on the homepage. Recommended size: wide landscape (about 1600×600).
+        </p>
+
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <input type="file" accept="image/*" onChange={(e) => setBannerFile(e.target.files?.[0] || null)} />
+          <button
+            type="button"
+            onClick={handleBannerUpload}
+            disabled={!bannerFile || uploadingBanner}
+            style={{
+              padding: '0.75rem 1rem',
+              background: uploadingBanner ? 'var(--text-muted)' : 'var(--primary-gold)',
+              color: '#111',
+              border: 'none',
+              borderRadius: '0.5rem',
+              cursor: uploadingBanner ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold',
+            }}
+          >
+            {uploadingBanner ? 'Uploading...' : 'Add Banner'}
+          </button>
+        </div>
+
+        {banners.length === 0 ? (
+          <div style={{ padding: '1rem', background: '#f7f7f7', borderRadius: '0.75rem', color: 'var(--text-muted)' }}>
+            No banners yet. Upload one to replace the old 90% OFF hero section.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            {banners.map((banner, index) => (
+              <div
+                key={banner.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '160px 1fr auto',
+                  gap: '1rem',
+                  alignItems: 'center',
+                  padding: '1rem',
+                  borderRadius: '0.75rem',
+                  border: '1px solid var(--glass-border)',
+                  opacity: banner.active ? 1 : 0.55,
+                }}
+              >
+                <img
+                  src={banner.image_url}
+                  alt=""
+                  style={{ width: '160px', height: '72px', objectFit: 'cover', borderRadius: '0.5rem', background: '#111' }}
+                />
+                <div>
+                  <div style={{ fontWeight: 600 }}>Banner #{index + 1}</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                    {banner.active ? 'Visible on homepage' : 'Hidden'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => moveBanner(index, -1)} disabled={index === 0}><ArrowUp size={16} /></button>
+                  <button type="button" onClick={() => moveBanner(index, 1)} disabled={index === banners.length - 1}><ArrowDown size={16} /></button>
+                  <button type="button" onClick={() => handleToggleBanner(banner)}>
+                    {banner.active ? 'Hide' : 'Show'}
+                  </button>
+                  <button type="button" onClick={() => handleDeleteBanner(banner.id)} style={{ color: 'var(--primary-red)' }}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Categories */}

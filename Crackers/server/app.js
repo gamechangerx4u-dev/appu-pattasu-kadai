@@ -8,6 +8,7 @@ import categoriesRouter from './routes/categories.js';
 import ordersRouter from './routes/orders.js';
 import uploadsRouter from './routes/uploads.js';
 import mediaRouter from './routes/media.js';
+import bannersRouter from './routes/banners.js';
 import { seedAdminPassword } from './lib/adminAuth.js';
 import { validateEnv, getAllowedOrigins } from './lib/env.js';
 import { ensureProductIds } from './lib/productLookup.js';
@@ -41,6 +42,7 @@ app.use('/api/categories', categoriesRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/uploads', uploadsRouter);
 app.use('/api/media', mediaRouter);
+app.use('/api/banners', bannersRouter);
 
 const PORT = process.env.PORT || 4000;
 
