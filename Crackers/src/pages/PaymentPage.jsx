@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { generateInvoicePdf } from '../lib/pdfGenerator';
+import { loadBrandLogo } from '../lib/loadBrandLogo';
 import { uploadFile } from '../lib/orders';
 import { compressImage } from '../utils/imageCompressor';
 
@@ -102,24 +103,7 @@ const PaymentPage = ({ clearCart }) => {
       const order = await createResp.json();
       console.log('Payment: initial order created', order);
 
-      // generate invoice PDF using the real site_txn
-      // try to load logo from common locations (supports dist/logo.jpg)
-      let logoDataUrl = null;
-      const logoCandidates = ['/logo.jpg', '/dist/logo.jpg', '/logo.png', '/dist/logo.png'];
-      for (const p of logoCandidates) {
-        try {
-          const logoResp = await fetch(p);
-          if (logoResp.ok) {
-            const blob = await logoResp.blob();
-            const lr = new FileReader();
-            const logoPromise = new Promise((resolve) => { lr.onload = () => resolve(lr.result); lr.readAsDataURL(blob); });
-            logoDataUrl = await logoPromise;
-            break;
-          }
-        } catch (e) {
-          // ignore and try next
-        }
-      }
+      const logoDataUrl = await loadBrandLogo();
 
       const receiptDataUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader();
