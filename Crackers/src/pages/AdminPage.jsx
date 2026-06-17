@@ -13,6 +13,8 @@ import {
   uploadProductImage,
   uploadAdminQR,
   getAdminQR,
+  getBankDetails,
+  updateBankDetails,
 } from '../lib/adminOperations';
 import { loginAdmin, logoutAdmin, getAdminToken, updateAdminPassword } from '../lib/adminAuth';
 import { fetchOrders, updateOrderStatus } from '../lib/orders';
@@ -40,6 +42,14 @@ const AdminPage = () => {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [adminQRFile, setAdminQRFile] = useState(null);
   const [adminQRUrl, setAdminQRUrl] = useState(null);
+  const [bankDetails, setBankDetails] = useState({
+    account_holder: '',
+    bank_name: '',
+    account_number: '',
+    ifsc_code: '',
+    branch: '',
+  });
+  const [savingBankDetails, setSavingBankDetails] = useState(false);
   const [orders, setOrders] = useState([]);
   const [banners, setBanners] = useState([]);
   const [bannerFile, setBannerFile] = useState(null);
@@ -74,6 +84,18 @@ const AdminPage = () => {
       try {
         const qr = await getAdminQR();
         setAdminQRUrl(qr);
+      } catch {
+        // ignore
+      }
+      try {
+        const bank = await getBankDetails();
+        setBankDetails({
+          account_holder: bank.account_holder || '',
+          bank_name: bank.bank_name || '',
+          account_number: bank.account_number || '',
+          ifsc_code: bank.ifsc_code || '',
+          branch: bank.branch || '',
+        });
       } catch {
         // ignore
       }
@@ -266,6 +288,38 @@ const AdminPage = () => {
       alert('Failed to upload admin QR');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveBankDetails = async () => {
+    const payload = {
+      account_holder: bankDetails.account_holder.trim(),
+      bank_name: bankDetails.bank_name.trim(),
+      account_number: bankDetails.account_number.trim(),
+      ifsc_code: bankDetails.ifsc_code.trim(),
+      branch: bankDetails.branch.trim(),
+    };
+
+    if (!payload.account_holder || !payload.bank_name || !payload.account_number || !payload.ifsc_code) {
+      alert('Account holder, bank name, account number, and IFSC are required');
+      return;
+    }
+
+    try {
+      setSavingBankDetails(true);
+      const saved = await updateBankDetails(payload);
+      setBankDetails({
+        account_holder: saved.account_holder || '',
+        bank_name: saved.bank_name || '',
+        account_number: saved.account_number || '',
+        ifsc_code: saved.ifsc_code || '',
+        branch: saved.branch || '',
+      });
+      alert('Netbanking account details saved');
+    } catch (error) {
+      alert(error.message || 'Failed to save bank details');
+    } finally {
+      setSavingBankDetails(false);
     }
   };
 
@@ -1003,6 +1057,67 @@ const AdminPage = () => {
             <input type="file" accept="image/*" onChange={(e) => setAdminQRFile(e.target.files?.[0])} />
             <button onClick={() => adminQRFile && handleAdminQRUpload(adminQRFile)} style={{ padding: '0.5rem 1rem', background: 'var(--primary-gold)', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Upload QR</button>
           </div>
+        </div>
+      </div>
+
+      {/* Netbanking Account Details */}
+      <div style={{ marginBottom: '2rem', background: 'var(--glass-bg)', padding: '1.5rem', borderRadius: '12px' }}>
+        <h3>Netbanking Account Details</h3>
+        <p style={{ color: 'var(--text-muted)', marginTop: 0 }}>
+          These details are shown to customers who choose Netbanking on the payment page.
+        </p>
+        <div style={{ display: 'grid', gap: '0.75rem', maxWidth: '520px' }}>
+          <input
+            type="text"
+            placeholder="Account holder name"
+            value={bankDetails.account_holder}
+            onChange={(e) => setBankDetails((prev) => ({ ...prev, account_holder: e.target.value }))}
+            style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--glass-border)' }}
+          />
+          <input
+            type="text"
+            placeholder="Bank name"
+            value={bankDetails.bank_name}
+            onChange={(e) => setBankDetails((prev) => ({ ...prev, bank_name: e.target.value }))}
+            style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--glass-border)' }}
+          />
+          <input
+            type="text"
+            placeholder="Account number"
+            value={bankDetails.account_number}
+            onChange={(e) => setBankDetails((prev) => ({ ...prev, account_number: e.target.value }))}
+            style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--glass-border)' }}
+          />
+          <input
+            type="text"
+            placeholder="IFSC code"
+            value={bankDetails.ifsc_code}
+            onChange={(e) => setBankDetails((prev) => ({ ...prev, ifsc_code: e.target.value.toUpperCase() }))}
+            style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--glass-border)' }}
+          />
+          <input
+            type="text"
+            placeholder="Branch (optional)"
+            value={bankDetails.branch}
+            onChange={(e) => setBankDetails((prev) => ({ ...prev, branch: e.target.value }))}
+            style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--glass-border)' }}
+          />
+          <button
+            type="button"
+            onClick={handleSaveBankDetails}
+            disabled={savingBankDetails}
+            style={{
+              padding: '0.75rem 1rem',
+              background: savingBankDetails ? 'var(--text-muted)' : 'var(--primary-gold)',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: savingBankDetails ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold',
+              width: 'fit-content',
+            }}
+          >
+            {savingBankDetails ? 'Saving...' : 'Save Bank Details'}
+          </button>
         </div>
       </div>
 

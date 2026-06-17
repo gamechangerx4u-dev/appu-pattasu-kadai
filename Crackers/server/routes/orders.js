@@ -76,6 +76,11 @@ router.post('/', async (req, res) => {
       discount: Number(req.body.discount || 0),
       total: Number(req.body.total || 0),
       payment_method: req.body.payment_method || '',
+      payment_details: {
+        utr_reference: String(req.body.payment_details?.utr_reference || req.body.utr_reference || '').trim(),
+        customer_bank: String(req.body.payment_details?.customer_bank || req.body.customer_bank || '').trim(),
+        payer_name: String(req.body.payment_details?.payer_name || req.body.payer_name || '').trim(),
+      },
       receipt_url: req.body.receipt_url || '',
       pdf_url: req.body.pdf_url || '',
       receipt_path: req.body.receipt_path || '',

@@ -13,6 +13,11 @@ const OrderSchema = new mongoose.Schema({
   discount: Number,
   total: Number,
   payment_method: String,
+  payment_details: {
+    utr_reference: { type: String, default: '' },
+    customer_bank: { type: String, default: '' },
+    payer_name: { type: String, default: '' },
+  },
   receipt_url: String,
   pdf_url: String,
   receipt_path: String,

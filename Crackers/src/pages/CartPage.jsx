@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import { generateWhatsAppLink } from '../utils/whatsapp';
-import { useNavigate } from 'react-router-dom';
 import { Trash2, Plus, Minus } from 'lucide-react';
 
 const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
@@ -42,6 +40,7 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
       total,
       coupon: couponCode === 'DIWALI25' ? couponCode : '',
       customer_name: trimmedName,
+      phone: trimmedPhone,
       email: trimmedEmail,
       address: trimmedAddress,
       user_id: null
@@ -103,16 +102,14 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
                 </div>
               )}
 
-              <div className="flex justify-between" style={{ marginBottom: '1rem' }}>
-                <span style={{ color: 'var(--text-muted)' }}>GST (18%)</span>
-                <span>₹{gst.toFixed(2)}</span>
-              </div>
-              
               <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '1rem', marginBottom: '1.5rem' }}>
                 <div className="flex justify-between" style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
                   <span>Total</span>
                   <span className="text-gradient">₹{total.toFixed(2)}</span>
                 </div>
+                <p style={{ margin: '0.5rem 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  Including GST
+                </p>
               </div>
               
               <div style={{ marginBottom: '1.5rem' }}>
