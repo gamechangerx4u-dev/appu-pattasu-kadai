@@ -27,9 +27,7 @@ export const generateWhatsAppLink = (
     message += `\n*Coupon Applied (${couponCode}):* -₹${discount.toFixed(2)}`;
   }
 
-  message += `\n*GST (18%):* ₹${gst.toFixed(2)}`;
-  
-  message += `\n*Total Payable:* ₹${totalAmount.toFixed(2)}\n\n`;
+  message += `\n*Total Payable (Including GST):* ₹${totalAmount.toFixed(2)}\n\n`;
   message += `Please confirm my order. Thank you!`;
   
   const encodedMessage = encodeURIComponent(message);

@@ -136,3 +136,20 @@ export const getAdminQR = async () => {
   if (!response.ok) throw new Error(body?.error || 'Failed to load admin QR');
   return body.url || null;
 };
+
+export const getBankDetails = async () => {
+  if (!isBackendConfigured()) throw new Error('Backend API is not configured');
+
+  const response = await fetch(`${getBackendUrl()}/api/admin/bank-details`);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body?.error || 'Failed to load bank details');
+  return body.bank_details || {};
+};
+
+export const updateBankDetails = async (bankDetails) => {
+  const body = await requestJson('/api/admin/bank-details', {
+    method: 'PATCH',
+    body: JSON.stringify({ bank_details: bankDetails }),
+  });
+  return body.bank_details || bankDetails;
+};

@@ -193,14 +193,13 @@ const drawItemsTable = (doc, startY, margin, contentWidth, pageHeight, items) =>
   return y + 10;
 };
 
-const drawTotals = (doc, y, margin, contentWidth, { subtotal, gst, discount, total }) => {
+const drawTotals = (doc, y, margin, contentWidth, { subtotal, discount, total }) => {
   const boxWidth = contentWidth * 0.42;
   const boxX = margin + contentWidth - boxWidth;
   const rows = [
     ['Subtotal', formatCurrency(subtotal)],
     ...(discount ? [['Discount', `- ${formatCurrency(discount)}`]] : []),
-    ['GST (18%)', formatCurrency(gst)],
-    ['Grand Total', formatCurrency(total || (subtotal || 0) + (gst || 0) - (discount || 0))],
+    ['Grand Total (Including GST)', formatCurrency(total)],
   ];
   const boxHeight = 18 + rows.length * 18 + 10;
 
@@ -222,7 +221,7 @@ const drawTotals = (doc, y, margin, contentWidth, { subtotal, gst, discount, tot
   return y + boxHeight + 18;
 };
 
-const drawPaymentProof = (doc, pageWidth, pageHeight, margin, contentWidth, y, receiptDataUrl) => {
+const drawPaymentProof = (doc, pageWidth, pageHeight, margin, contentWidth, y, receiptDataUrl, paymentMethod) => {
   if (!receiptDataUrl) return y;
 
   try {
@@ -249,7 +248,10 @@ const drawPaymentProof = (doc, pageWidth, pageHeight, margin, contentWidth, y, r
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     setColor(doc, BRAND.muted);
-    doc.text('GPay payment screenshot attached below for verification.', margin, y);
+    const proofLabel = paymentMethod === 'Netbanking'
+      ? 'Netbanking payment screenshot attached below for verification.'
+      : 'GPay payment screenshot attached below for verification.';
+    doc.text(proofLabel, margin, y);
     y += 16;
 
     const imageX = margin + (contentWidth - maxImgWidth) / 2;
@@ -281,6 +283,7 @@ export async function generateInvoicePdf({
   discount,
   total,
   payment_method,
+  payment_details,
   receiptDataUrl,
   logoDataUrl,
 }) {
@@ -303,6 +306,9 @@ export async function generateInvoicePdf({
   ];
   const orderLines = [
     `Payment Method: ${payment_method || 'GPay'}`,
+    ...(payment_details?.utr_reference ? [`UTR / Reference: ${payment_details.utr_reference}`] : []),
+    ...(payment_details?.customer_bank ? [`Customer Bank: ${payment_details.customer_bank}`] : []),
+    ...(payment_details?.payer_name ? [`Payer Name: ${payment_details.payer_name}`] : []),
     `Items: ${Array.isArray(items) ? items.length : 0}`,
     'Delivery: Tamil Nadu',
     'Status: Payment received — processing',
@@ -313,8 +319,8 @@ export async function generateInvoicePdf({
   y += Math.max(leftPanelHeight, rightPanelHeight) + 20;
 
   y = drawItemsTable(doc, y, margin, contentWidth, pageHeight, items);
-  y = drawTotals(doc, y, margin, contentWidth, { subtotal, gst, discount, total });
-  drawPaymentProof(doc, pageWidth, pageHeight, margin, contentWidth, y, receiptDataUrl);
+  y = drawTotals(doc, y, margin, contentWidth, { subtotal, discount, total });
+  drawPaymentProof(doc, pageWidth, pageHeight, margin, contentWidth, y, receiptDataUrl, payment_method);
   drawFooter(doc, pageWidth, pageHeight, margin);
 
   return doc.output('blob');

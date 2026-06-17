@@ -171,10 +171,6 @@ const buildOrderSummaryHtml = (order, itemsHtml) => `
         <td style="padding: 4px 0; color: #666;">Subtotal:</td>
         <td style="padding: 4px 0; text-align: right; font-weight: bold;">₹${Number(order.subtotal || 0).toFixed(2)}</td>
       </tr>
-      <tr>
-        <td style="padding: 4px 0; color: #666;">GST:</td>
-        <td style="padding: 4px 0; text-align: right; font-weight: bold;">₹${Number(order.gst || 0).toFixed(2)}</td>
-      </tr>
       ${order.discount ? `
       <tr>
         <td style="padding: 4px 0; color: #666;">Discount:</td>
@@ -182,7 +178,7 @@ const buildOrderSummaryHtml = (order, itemsHtml) => `
       </tr>
       ` : ''}
       <tr style="border-top: 1px solid #ddd; font-size: 18px;">
-        <td style="padding: 12px 0 0 0; font-weight: bold; color: #b00020;">Grand Total:</td>
+        <td style="padding: 12px 0 0 0; font-weight: bold; color: #b00020;">Grand Total (Including GST):</td>
         <td style="padding: 12px 0 0 0; text-align: right; font-weight: bold; color: #b00020;">₹${Number(order.total || 0).toFixed(2)}</td>
       </tr>
     </table>
@@ -283,6 +279,24 @@ export async function sendOrderEmail(order, options = {}) {
             <td style="padding: 6px 0; font-weight: bold;">Payment Method:</td>
             <td style="padding: 6px 0;">${order.payment_method || 'GPay'}</td>
           </tr>
+          ${order.payment_details?.utr_reference ? `
+          <tr>
+            <td style="padding: 6px 0; font-weight: bold;">UTR / Reference:</td>
+            <td style="padding: 6px 0;">${order.payment_details.utr_reference}</td>
+          </tr>
+          ` : ''}
+          ${order.payment_details?.customer_bank ? `
+          <tr>
+            <td style="padding: 6px 0; font-weight: bold;">Customer Bank:</td>
+            <td style="padding: 6px 0;">${order.payment_details.customer_bank}</td>
+          </tr>
+          ` : ''}
+          ${order.payment_details?.payer_name ? `
+          <tr>
+            <td style="padding: 6px 0; font-weight: bold;">Payer Name:</td>
+            <td style="padding: 6px 0;">${order.payment_details.payer_name}</td>
+          </tr>
+          ` : ''}
         </table>
 
         ${buildOrderSummaryHtml(order, itemsHtml)}
