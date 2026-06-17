@@ -52,9 +52,6 @@ const PaymentPage = ({ clearCart }) => {
       total: getOrderTotal(parsed),
     };
     setCheckout(normalizedCheckout);
-    setCustomerName(normalizedCheckout?.customer_name || '');
-    setPaymentPhone(normalizedCheckout?.phone || '');
-    setPayerName(normalizedCheckout?.customer_name || '');
 
     (async () => {
       if (!backendUrl) return;
@@ -141,8 +138,8 @@ const PaymentPage = ({ clearCart }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: checkout.user_id || null,
-          customer_name: customerName || checkout.customer_name || 'Guest',
-          phone: paymentPhone,
+          customer_name: customerName.trim(),
+          phone: paymentPhone.trim(),
           email: checkout.email,
           address: checkout.address,
           items: checkout.items,
@@ -171,8 +168,8 @@ const PaymentPage = ({ clearCart }) => {
 
       const pdfBlob = await generateInvoicePdf({
         site_txn: order.site_txn,
-        customer_name: customerName || checkout.customer_name || 'Guest',
-        phone: paymentPhone,
+        customer_name: customerName.trim(),
+        phone: paymentPhone.trim(),
         email: checkout.email,
         address: checkout.address,
         items: checkout.items,
@@ -206,12 +203,6 @@ const PaymentPage = ({ clearCart }) => {
       const pdf_url = updatedOrder?.pdf_url || `${backendUrl}/api/orders/${order.id}/pdf`;
 
       sessionStorage.setItem('last_order_txn', order.site_txn);
-      try {
-        const updated = { ...(checkout || {}), customer_name: customerName };
-        sessionStorage.setItem('checkout', JSON.stringify(updated));
-      } catch {
-        // ignore
-      }
 
       const shopOwnerNumber = '9876543210';
       let message = `*Order Confirmed*\nTransaction: ${order.site_txn}\nName: ${order.customer_name || 'Guest'}\nPhone: ${order.phone}\nPayment: ${paymentMethod}\nAddress: ${order.address}\nTotal (Including GST): ₹${Number(order.total).toFixed(2)}\nItems: ${order.items ? order.items.length : 0}\n`;
@@ -228,7 +219,7 @@ const PaymentPage = ({ clearCart }) => {
           const link = document.createElement('a');
           link.href = pdf_url;
           const sanitize = (s) => String(s || '').replace(/[^a-zA-Z0-9-_ ]/g, '').trim().replace(/\s+/g, '_');
-          const namePart = sanitize(order.customer_name || checkout.customer_name || customerName || 'customer');
+          const namePart = sanitize(order.customer_name || customerName || 'customer');
           link.download = `Invoice-${order.site_txn || 'order'}-${namePart}.pdf`;
           document.body.appendChild(link);
           link.click();
