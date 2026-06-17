@@ -20,6 +20,13 @@ const PAYMENT_METHODS = {
   NETBANKING: 'Netbanking',
 };
 
+const getOrderTotal = (checkoutData) => {
+  if (!checkoutData) return 0;
+  const subtotal = Number(checkoutData.subtotal || 0);
+  const discount = Number(checkoutData.discount || 0);
+  return Number(checkoutData.total ?? (subtotal - discount));
+};
+
 const PaymentPage = ({ clearCart }) => {
   const navigate = useNavigate();
   const backendUrl = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, '') || '';
@@ -40,10 +47,14 @@ const PaymentPage = ({ clearCart }) => {
     const stored = sessionStorage.getItem('checkout');
     if (!stored) return navigate('/cart');
     const parsed = JSON.parse(stored);
-    setCheckout(parsed);
-    setCustomerName(parsed?.customer_name || '');
-    setPaymentPhone(parsed?.phone || '');
-    setPayerName(parsed?.customer_name || '');
+    const normalizedCheckout = {
+      ...parsed,
+      total: getOrderTotal(parsed),
+    };
+    setCheckout(normalizedCheckout);
+    setCustomerName(normalizedCheckout?.customer_name || '');
+    setPaymentPhone(normalizedCheckout?.phone || '');
+    setPayerName(normalizedCheckout?.customer_name || '');
 
     (async () => {
       if (!backendUrl) return;
@@ -104,6 +115,8 @@ const PaymentPage = ({ clearCart }) => {
     if (validationError) return alert(validationError);
     if (checkout.subtotal < 3000) return alert('Minimum subtotal ₹3,000 required to proceed');
 
+    const orderTotal = getOrderTotal(checkout);
+
     const paymentDetails = paymentMethod === PAYMENT_METHODS.NETBANKING
       ? {
         utr_reference: utrReference.trim(),
@@ -134,9 +147,8 @@ const PaymentPage = ({ clearCart }) => {
           address: checkout.address,
           items: checkout.items,
           subtotal: checkout.subtotal,
-          gst: checkout.gst,
           discount: checkout.discount,
-          total: checkout.total,
+          total: orderTotal,
           payment_method: paymentMethod,
           payment_details: paymentDetails,
           receipt_url,
@@ -165,9 +177,8 @@ const PaymentPage = ({ clearCart }) => {
         address: checkout.address,
         items: checkout.items,
         subtotal: checkout.subtotal,
-        gst: checkout.gst,
         discount: checkout.discount,
-        total: checkout.total,
+        total: orderTotal,
         payment_method: paymentMethod,
         payment_details: paymentDetails,
         receiptDataUrl,
@@ -241,7 +252,7 @@ const PaymentPage = ({ clearCart }) => {
 
   if (!checkout) return null;
 
-  const orderTotal = Number(checkout.total || (checkout.subtotal || 0) + (checkout.gst || 0) - (checkout.discount || 0));
+  const orderTotal = getOrderTotal(checkout);
 
   return (
     <div className="container" style={{ padding: '4rem 20px', minHeight: '80vh' }}>

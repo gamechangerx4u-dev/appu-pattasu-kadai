@@ -11,9 +11,7 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
   const subtotal = cartItems.reduce((total, item) => total + (item.ourPrice * item.quantity), 0);
   // Simple discount logic: If coupon is 'DIWALI25', 10% off
   const discount = couponCode === 'DIWALI25' ? subtotal * 0.1 : 0;
-  const taxableAmount = subtotal - discount;
-  const gst = taxableAmount * 0.18;
-  const total = taxableAmount + gst;
+  const total = subtotal - discount;
 
   const handleCheckout = () => {
     if (cartItems.length === 0) return alert("Your cart is empty!");
@@ -36,7 +34,6 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
       items: cartItems,
       subtotal,
       discount,
-      gst,
       total,
       coupon: couponCode === 'DIWALI25' ? couponCode : '',
       customer_name: trimmedName,

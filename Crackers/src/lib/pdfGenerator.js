@@ -279,7 +279,6 @@ export async function generateInvoicePdf({
   address,
   items,
   subtotal,
-  gst,
   discount,
   total,
   payment_method,
