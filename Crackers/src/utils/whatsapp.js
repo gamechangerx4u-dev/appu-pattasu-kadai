@@ -2,7 +2,6 @@ export const generateWhatsAppLink = (
   cartItems,
   subtotal,
   discount,
-  gst,
   totalAmount,
   couponCode = '',
   customerDetails = {}
