@@ -26,9 +26,11 @@ import {
   reorderBanners,
   uploadBannerImage,
 } from '../lib/banners';
+import { useToast } from '../context/ToastContext';
 
 const AdminPage = () => {
   const navigate = useNavigate();
+  const toast = useToast();
   const backendUrl = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, '') || '';
   const isMongoMode = Boolean(backendUrl);
   const [password, setPassword] = useState('');
@@ -113,7 +115,7 @@ const AdminPage = () => {
       }
     } catch (error) {
       console.error('Failed to load data:', error);
-      alert('Failed to load data from MongoDB API');
+      toast.error('Could not load admin data from the server.');
     } finally {
       setLoading(false);
     }
@@ -149,7 +151,7 @@ const AdminPage = () => {
       setPassword('');
       await loadData();
     } catch (error) {
-      alert(error.message || 'Invalid password');
+      toast.error(error.message || 'Incorrect admin password.');
     }
   };
 
@@ -161,7 +163,10 @@ const AdminPage = () => {
   };
 
   const handleBannerUpload = async () => {
-    if (!bannerFile) return alert('Choose a banner image first');
+    if (!bannerFile) {
+      toast.warning('Choose a banner image before uploading.');
+      return;
+    }
     try {
       setUploadingBanner(true);
       let uploadFile = bannerFile;
@@ -176,9 +181,9 @@ const AdminPage = () => {
       setBannerFile(null);
       const bannersData = await fetchAllBanners();
       setBanners(bannersData);
-      alert('Banner added');
+      toast.success('Homepage banner added.', { title: 'Banner uploaded' });
     } catch (error) {
-      alert(error.message || 'Failed to upload banner');
+      toast.error(error.message || 'Could not upload the banner.');
     } finally {
       setUploadingBanner(false);
     }
@@ -190,7 +195,7 @@ const AdminPage = () => {
       await deleteBanner(id);
       setBanners((prev) => prev.filter((banner) => banner.id !== id));
     } catch (error) {
-      alert(error.message || 'Failed to delete banner');
+      toast.error(error.message || 'Could not delete the banner.');
     }
   };
 
@@ -199,7 +204,7 @@ const AdminPage = () => {
       const updated = await toggleBannerActive(banner.id, !banner.active);
       setBanners((prev) => prev.map((item) => (item.id === banner.id ? updated : item)));
     } catch (error) {
-      alert(error.message || 'Failed to update banner');
+      toast.error(error.message || 'Could not update the banner.');
     }
   };
 
@@ -213,7 +218,7 @@ const AdminPage = () => {
       const updated = await reorderBanners(reordered.map((banner) => banner.id));
       setBanners(updated);
     } catch (error) {
-      alert(error.message || 'Failed to reorder banners');
+      toast.error(error.message || 'Could not reorder banners.');
     }
   };
 
@@ -222,12 +227,12 @@ const AdminPage = () => {
 
     const { currentPassword, newPassword, confirmNewPassword } = passwordForm;
     if (!currentPassword || !newPassword || !confirmNewPassword) {
-      alert('Please fill all password fields');
+      toast.warning('Fill in your current password and the new password.');
       return;
     }
 
     if (newPassword !== confirmNewPassword) {
-      alert('New passwords do not match');
+      toast.warning('The new passwords do not match.');
       return;
     }
 
@@ -235,10 +240,10 @@ const AdminPage = () => {
       setLoading(true);
       await updateAdminPassword({ currentPassword, newPassword });
       setPasswordForm({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
-      alert('Admin password updated');
+      toast.success('Your admin password has been updated.', { title: 'Password changed' });
     } catch (error) {
       console.error('Password update failed:', error);
-      alert(error.message || 'Failed to update admin password');
+      toast.error(error.message || 'Could not update the admin password.');
     } finally {
       setLoading(false);
     }
@@ -259,10 +264,10 @@ const AdminPage = () => {
       const tempId = `temp-${Date.now()}`;
       const url = await uploadProductImage(uploadFile, tempId);
       setFormData(prev => ({ ...prev, image: url }));
-      alert('Image uploaded successfully');
+      toast.success('Product image uploaded.', { title: 'Image ready' });
     } catch (error) {
       console.error('Image upload failed:', error);
-      alert('Failed to upload image');
+      toast.error('Could not upload the product image.');
     } finally {
       setUploadingImage(false);
     }
@@ -282,10 +287,10 @@ const AdminPage = () => {
       }
       const url = await uploadAdminQR(uploadFile);
       setAdminQRUrl(url);
-      alert('Admin GPay QR uploaded');
+      toast.success('GPay QR code is now active.', { title: 'QR uploaded' });
     } catch (error) {
       console.error('Admin QR upload failed', error);
-      alert('Failed to upload admin QR');
+      toast.error('Could not upload the GPay QR code.');
     } finally {
       setLoading(false);
     }
@@ -301,7 +306,7 @@ const AdminPage = () => {
     };
 
     if (!payload.account_holder || !payload.bank_name || !payload.account_number || !payload.ifsc_code) {
-      alert('Account holder, bank name, account number, and IFSC are required');
+      toast.warning('Account holder, bank name, account number, and IFSC are required.');
       return;
     }
 
@@ -315,9 +320,9 @@ const AdminPage = () => {
         ifsc_code: saved.ifsc_code || '',
         branch: saved.branch || '',
       });
-      alert('Netbanking account details saved');
+      toast.success('Netbanking details saved for checkout.', { title: 'Bank details saved' });
     } catch (error) {
-      alert(error.message || 'Failed to save bank details');
+      toast.error(error.message || 'Could not save bank details.');
     } finally {
       setSavingBankDetails(false);
     }
@@ -330,7 +335,7 @@ const AdminPage = () => {
       setOrders(ordersData);
     } catch (error) {
       console.error('Failed to refresh orders', error);
-      alert('Failed to load orders');
+      toast.error('Could not refresh the orders list.');
     } finally {
       setLoading(false);
     }
@@ -340,17 +345,17 @@ const AdminPage = () => {
     try {
       await updateOrderStatus(orderId, newStatus);
       await handleRefreshOrders();
-      alert('Order status updated');
+      toast.success('Order status updated.', { title: 'Status changed' });
     } catch (error) {
       console.error('Failed to update order status', error);
-      alert('Failed to update order status');
+      toast.error('Could not update the order status.');
     }
   };
 
   const handleAddCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) {
-      alert('Please enter a category name');
+      toast.warning('Enter a category name first.');
       return;
     }
 
@@ -359,10 +364,10 @@ const AdminPage = () => {
       await addCategory(name);
       setNewCategoryName('');
       await loadData();
-      alert('Category added');
+      toast.success('Category added to the store.', { title: 'Category created' });
     } catch (error) {
       console.error('Error adding category:', error);
-      alert('Failed to add category');
+      toast.error('Could not add the category.');
     } finally {
       setLoading(false);
     }
@@ -375,10 +380,10 @@ const AdminPage = () => {
       setLoading(true);
       await deleteCategory(id);
       await loadData();
-      alert('Category deleted');
+      toast.success('Category removed.', { title: 'Category deleted' });
     } catch (error) {
       console.error('Error deleting category:', error);
-      alert('Failed to delete category');
+      toast.error('Could not delete the category.');
     } finally {
       setLoading(false);
     }
@@ -400,7 +405,7 @@ const AdminPage = () => {
       await reorderCategories(newCategories.map(c => c.id));
     } catch (error) {
       console.error('Failed to reorder categories:', error);
-      alert('Failed to save category order');
+      toast.error('Could not save the new category order.');
       await loadData();
     } finally {
       setLoading(false);
@@ -411,12 +416,12 @@ const AdminPage = () => {
     e.preventDefault();
     const hasCategory = formData.category || (Array.isArray(formData.categories) && formData.categories.length > 0);
     if (!formData.name || !hasCategory || !formData.our_price || !formData.market_price) {
-      alert('Please fill all required fields');
+      toast.warning('Fill in all required product fields.');
       return;
     }
 
     if (!formData.image) {
-      alert('Please provide an image URL or upload an image');
+      toast.warning('Add a product image URL or upload an image.');
       return;
     }
 
@@ -433,6 +438,8 @@ const AdminPage = () => {
         stock: parseInt(formData.stock) || 0,
       };
 
+      const wasEditing = Boolean(editingId);
+
       if (editingId) {
         await updateProduct(editingId, newProduct);
         setEditingId(null);
@@ -444,10 +451,12 @@ const AdminPage = () => {
       setShowAddForm(false);
       setImageFile(null);
       await loadData();
-      alert(editingId ? 'Product updated' : 'Product added');
+      toast.success(wasEditing ? 'Product details updated.' : 'New product added to the catalog.', {
+        title: wasEditing ? 'Product updated' : 'Product added',
+      });
     } catch (error) {
       console.error('Error saving product:', error);
-      alert('Failed to save product');
+      toast.error('Could not save the product.');
     } finally {
       setLoading(false);
     }
@@ -474,10 +483,10 @@ const AdminPage = () => {
       setLoading(true);
       await deleteProduct(id);
       await loadData();
-      alert('Product deleted');
+      toast.success('Product removed from the catalog.', { title: 'Product deleted' });
     } catch (error) {
       console.error('Error deleting product:', error);
-      alert('Failed to delete product');
+      toast.error('Could not delete the product.');
     } finally {
       setLoading(false);
     }
@@ -979,7 +988,7 @@ const AdminPage = () => {
                     borderRadius: '0.5rem',
                     border: '1px solid var(--glass-border)'
                   }}
-                  onError={() => alert('Image URL is invalid or inaccessible')}
+                  onError={() => toast.error('That image URL could not be loaded.')}
                 />
               </div>
             )}

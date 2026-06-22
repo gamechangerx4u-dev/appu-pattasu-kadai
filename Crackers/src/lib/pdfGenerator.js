@@ -197,25 +197,35 @@ const drawTotals = (doc, y, margin, contentWidth, { subtotal, discount, total })
   const boxWidth = contentWidth * 0.42;
   const boxX = margin + contentWidth - boxWidth;
   const rows = [
-    ['Subtotal', formatCurrency(subtotal)],
-    ...(discount ? [['Discount', `- ${formatCurrency(discount)}`]] : []),
-    ['Grand Total (Including GST)', formatCurrency(total)],
+    { label: 'Subtotal', value: formatCurrency(subtotal) },
+    ...(discount ? [{ label: 'Discount', value: `- ${formatCurrency(discount)}` }] : []),
+    { label: 'Grand Total', sublabel: '(Including GST)', value: formatCurrency(total), isTotal: true },
   ];
-  const boxHeight = 18 + rows.length * 18 + 10;
+
+  const rowHeight = (row) => (row.isTotal ? 34 : 18);
+  const boxHeight = 18 + rows.reduce((sum, row) => sum + rowHeight(row), 0) + 10;
 
   setFill(doc, BRAND.panel);
   setDraw(doc, BRAND.border);
   doc.roundedRect(boxX, y, boxWidth, boxHeight, 4, 4, 'FD');
 
   let rowY = y + 18;
-  rows.forEach(([label, value], index) => {
-    const isTotal = index === rows.length - 1;
-    doc.setFont('helvetica', isTotal ? 'bold' : 'normal');
-    doc.setFontSize(isTotal ? 11 : 9.5);
-    setColor(doc, isTotal ? BRAND.red : BRAND.text);
-    doc.text(label, boxX + 12, rowY);
-    doc.text(value, boxX + boxWidth - 12, rowY, { align: 'right' });
-    rowY += 18;
+  rows.forEach((row) => {
+    const height = rowHeight(row);
+    doc.setFont('helvetica', row.isTotal ? 'bold' : 'normal');
+    doc.setFontSize(row.isTotal ? 11 : 9.5);
+    setColor(doc, row.isTotal ? BRAND.red : BRAND.text);
+    doc.text(row.label, boxX + 12, rowY);
+    doc.text(row.value, boxX + boxWidth - 12, rowY, { align: 'right' });
+
+    if (row.sublabel) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      setColor(doc, BRAND.muted);
+      doc.text(row.sublabel, boxX + 12, rowY + 13);
+    }
+
+    rowY += height;
   });
 
   return y + boxHeight + 18;

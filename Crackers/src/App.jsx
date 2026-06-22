@@ -6,12 +6,15 @@ import BottomNav from './components/BottomNav';
 import Sidebar from './components/Sidebar';
 import Home from './pages/Home';
 import { loadCatalog } from './lib/catalog';
+import { useToast } from './context/ToastContext';
 
 // Lazy load pages for code splitting
 const CartPage = lazy(() => import('./pages/CartPage'));
 const WishlistPage = lazy(() => import('./pages/WishlistPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const PaymentPage = lazy(() => import('./pages/PaymentPage'));
+const PaymentSuccessPage = lazy(() => import('./pages/PaymentSuccessPage'));
+const PaymentFailedPage = lazy(() => import('./pages/PaymentFailedPage'));
 
 // Loading component
 const PageLoader = () => (
@@ -24,6 +27,7 @@ const PageLoader = () => (
 );
 
 function App() {
+  const toast = useToast();
   const [minPrice, setMinPrice] = useState(0);
   const [maxPrice, setMaxPrice] = useState(5000);
   const [searchQuery, setSearchQuery] = useState('');
@@ -60,6 +64,7 @@ function App() {
         setCategories(catalog.categories);
       } catch (error) {
         console.error('Failed to load catalog data:', error);
+        toast.error('Could not load products right now. Please refresh the page.');
       } finally {
         if (isMounted) {
           setCatalogLoading(false);
@@ -180,6 +185,16 @@ function App() {
         <Route path="/payment" element={
           <Suspense fallback={<PageLoader />}>
             <PaymentPage clearCart={clearCart} />
+          </Suspense>
+        } />
+        <Route path="/payment/success" element={
+          <Suspense fallback={<PageLoader />}>
+            <PaymentSuccessPage />
+          </Suspense>
+        } />
+        <Route path="/payment/failed" element={
+          <Suspense fallback={<PageLoader />}>
+            <PaymentFailedPage />
           </Suspense>
         } />
         <Route path="/wishlist" element={
