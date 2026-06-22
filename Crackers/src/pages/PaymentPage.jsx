@@ -4,6 +4,8 @@ import { generateInvoicePdf } from '../lib/pdfGenerator';
 import { loadBrandLogo } from '../lib/loadBrandLogo';
 import { uploadFile } from '../lib/orders';
 import { compressImage } from '../utils/imageCompressor';
+import { getCheckout, getCompletedOrder, saveCompletedOrder, clearCheckout } from '../lib/checkoutSession';
+import { useToast } from '../context/ToastContext';
 
 const blobToBase64 = (blob) => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -29,6 +31,7 @@ const getOrderTotal = (checkoutData) => {
 
 const PaymentPage = ({ clearCart }) => {
   const navigate = useNavigate();
+  const toast = useToast();
   const backendUrl = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, '') || '';
   const [checkout, setCheckout] = useState(null);
   const [customerName, setCustomerName] = useState('');
@@ -41,12 +44,20 @@ const PaymentPage = ({ clearCart }) => {
   const [adminQR, setAdminQR] = useState(null);
   const [bankDetails, setBankDetails] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('checkout');
-    if (!stored) return navigate('/cart');
-    const parsed = JSON.parse(stored);
+    const completed = getCompletedOrder();
+    if (completed?.site_txn) {
+      navigate('/payment/success', { replace: true, state: { order: completed } });
+      return;
+    }
+
+    const parsed = getCheckout();
+    if (!parsed) {
+      navigate('/cart', { replace: true });
+      return;
+    }
+
     const normalizedCheckout = {
       ...parsed,
       total: getOrderTotal(parsed),
@@ -73,7 +84,10 @@ const PaymentPage = ({ clearCart }) => {
   const onFileChange = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (!['image/png', 'image/jpeg', 'image/jpg'].includes(f.type)) return alert('Only PNG/JPEG images allowed');
+    if (!['image/png', 'image/jpeg', 'image/jpg'].includes(f.type)) {
+      toast.warning('Please upload a PNG or JPEG receipt image.');
+      return;
+    }
     compressImage(f, { maxWidth: 1200, quality: 0.8 })
       .then((compressed) => setReceiptFile(compressed))
       .catch((err) => {
@@ -109,8 +123,14 @@ const PaymentPage = ({ clearCart }) => {
   const handleGenerate = async () => {
     if (!checkout) return;
     const validationError = validatePaymentDetails();
-    if (validationError) return alert(validationError);
-    if (checkout.subtotal < 3000) return alert('Minimum subtotal ₹3,000 required to proceed');
+    if (validationError) {
+      toast.warning(validationError);
+      return;
+    }
+    if (checkout.subtotal < 3000) {
+      toast.warning('Minimum order subtotal is ₹3,000.');
+      return;
+    }
 
     const orderTotal = getOrderTotal(checkout);
 
@@ -127,7 +147,7 @@ const PaymentPage = ({ clearCart }) => {
       };
 
     setLoading(true);
-    setErrorMsg('');
+    let createdOrder = null;
     try {
       const receiptResp = await uploadFile('order-receipts', `order-receipts/temp-${Date.now()}-${receiptFile.name}`, receiptFile);
       const receipt_url = receiptResp?.url || null;
@@ -157,6 +177,7 @@ const PaymentPage = ({ clearCart }) => {
         throw new Error(err?.error || 'Failed to create order');
       }
       const order = await createResp.json();
+      createdOrder = order;
 
       const logoDataUrl = await loadBrandLogo();
       const receiptDataUrl = await new Promise((resolve, reject) => {
@@ -202,7 +223,17 @@ const PaymentPage = ({ clearCart }) => {
       const updatedOrder = await pdfPatchResp.json();
       const pdf_url = updatedOrder?.pdf_url || `${backendUrl}/api/orders/${order.id}/pdf`;
 
-      sessionStorage.setItem('last_order_txn', order.site_txn);
+      const completedOrder = {
+        site_txn: order.site_txn,
+        pdf_url,
+        total: orderTotal,
+        customer_name: customerName.trim(),
+      };
+
+      if (typeof clearCart === 'function') {
+        clearCart();
+      }
+      saveCompletedOrder(completedOrder);
 
       const shopOwnerNumber = '9876543210';
       let message = `*Order Confirmed*\nTransaction: ${order.site_txn}\nName: ${order.customer_name || 'Guest'}\nPhone: ${order.phone}\nPayment: ${paymentMethod}\nAddress: ${order.address}\nTotal (Including GST): ₹${Number(order.total).toFixed(2)}\nItems: ${order.items ? order.items.length : 0}\n`;
@@ -212,7 +243,6 @@ const PaymentPage = ({ clearCart }) => {
       message += '\nThank you!';
       const encoded = encodeURIComponent(message);
       window.open(`https://wa.me/91${shopOwnerNumber}?text=${encoded}`, '_blank');
-      alert(`Order created: ${order.site_txn}. Invoice emailed and available at: ${pdf_url}`);
 
       if (pdf_url) {
         try {
@@ -229,13 +259,31 @@ const PaymentPage = ({ clearCart }) => {
         }
       }
 
-      if (typeof clearCart === 'function') {
-        clearCart();
-      }
+      navigate('/payment/success', {
+        replace: true,
+        state: { order: completedOrder },
+      });
     } catch (err) {
       console.error('Payment: failed to create order', err);
-      setErrorMsg(err?.message || 'Failed to create order');
-      alert('Failed to create order: ' + err.message);
+      const failureMessage = err?.message || 'Failed to complete payment';
+      toast.error(failureMessage, { title: 'Payment failed' });
+
+      if (createdOrder) {
+        if (typeof clearCart === 'function') {
+          clearCart();
+        }
+        clearCheckout();
+      }
+
+      navigate('/payment/failed', {
+        replace: true,
+        state: {
+          failure: {
+            message: failureMessage,
+            site_txn: createdOrder?.site_txn || '',
+          },
+        },
+      });
     } finally {
       setLoading(false);
     }
@@ -413,7 +461,6 @@ const PaymentPage = ({ clearCart }) => {
             </div>
 
             <div style={{ marginTop: '1.5rem' }}>
-              {errorMsg ? <div style={{ color: '#b00020', marginBottom: '0.5rem' }}>{errorMsg}</div> : null}
               <button
                 className="btn btn-primary"
                 onClick={handleGenerate}

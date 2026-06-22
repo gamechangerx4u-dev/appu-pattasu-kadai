@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { Trash2, Plus, Minus } from 'lucide-react';
+import { clearCompletedOrder } from '../lib/checkoutSession';
+import { useToast } from '../context/ToastContext';
 
 const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
+  const toast = useToast();
   const [couponCode, setCouponCode] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -14,7 +17,10 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
   const total = subtotal - discount;
 
   const handleCheckout = () => {
-    if (cartItems.length === 0) return alert("Your cart is empty!");
+    if (cartItems.length === 0) {
+      toast.warning('Your cart is empty. Add crackers before checking out.');
+      return;
+    }
 
     const trimmedName = customerName.trim();
     const trimmedPhone = customerPhone.trim();
@@ -22,14 +28,17 @@ const CartPage = ({ cartItems, updateQuantity, removeFromCart }) => {
     const trimmedAddress = customerAddress.trim();
 
     if (!trimmedName || !trimmedPhone || !trimmedEmail || !trimmedAddress) {
-      return alert('Please enter your name, phone number, email, and address before proceeding.');
+      toast.warning('Please fill in your name, phone, email, and delivery address.');
+      return;
     }
 
     if (subtotal < 3000) {
-      return alert('Minimum subtotal of ₹3,000 is required to proceed.');
+      toast.warning('Minimum order subtotal is ₹3,000.');
+      return;
     }
 
     // Save checkout details to session and navigate to payment page
+    clearCompletedOrder();
     const checkout = {
       items: cartItems,
       subtotal,
